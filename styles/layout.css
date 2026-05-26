@@ -1,0 +1,130 @@
+.site-body {
+  padding-top: var(--safe-top);
+}
+
+.public-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(248, 250, 252, 0.94);
+  border-bottom: 1px solid rgba(219, 227, 238, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.public-nav,
+.hero-section,
+.feature-band {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.public-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  gap: 16px;
+}
+
+.public-main {
+  overflow: hidden;
+}
+
+.hero-section {
+  display: grid;
+  min-height: calc(100vh - 68px - var(--safe-top));
+  grid-template-columns: 1fr;
+  gap: 28px;
+  align-items: center;
+  padding: 44px 0 30px;
+}
+
+.hero-copy {
+  display: grid;
+  gap: 18px;
+  max-width: 620px;
+}
+
+.hero-copy h1,
+.section-heading h2,
+.offline-page h1 {
+  margin: 0;
+  color: var(--color-ink);
+  line-height: 1.02;
+}
+
+.hero-copy h1 {
+  max-width: 10ch;
+  font-size: clamp(3rem, 14vw, 5.6rem);
+}
+
+.hero-text {
+  max-width: 58ch;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 1.08rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-panel {
+  display: flex;
+  justify-content: center;
+  min-height: 330px;
+}
+
+.feature-band {
+  padding: 48px 0 72px;
+}
+
+.section-heading {
+  display: grid;
+  gap: 8px;
+  max-width: 680px;
+  margin-bottom: 22px;
+}
+
+.section-heading h2 {
+  font-size: clamp(2rem, 8vw, 3.4rem);
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.offline-page {
+  display: grid;
+  min-height: 100vh;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bottom) + 24px);
+  text-align: center;
+}
+
+.offline-page h1 {
+  font-size: clamp(2rem, 10vw, 3.4rem);
+}
+
+.offline-page p {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--color-muted);
+}
+
+@media (min-width: 760px) {
+  .hero-section {
+    grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+    padding-top: 30px;
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

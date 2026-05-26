@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="A mobile-first gym management PWA for attendance, members, workouts, and operations.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Gym PWA">
+    <title>Gym PWA</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/assets/icon-192.png">
+    <link rel="stylesheet" href="/styles/main.css">
+    <script src="/scripts/env.runtime.js"></script>
+    <script type="module" src="/scripts/main.js"></script>
+  </head>
+  <body class="site-body">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <aside class="install-banner" data-install-banner hidden aria-label="Install Gym PWA">
+      <div>
+        <strong>Install Gym PWA</strong>
+        <span data-install-status>Open faster and keep the gym shell available offline.</span>
+      </div>
+      <div class="install-banner-actions">
+        <button class="button button-primary" type="button" data-install-button>Install</button>
+        <button class="icon-button icon-button-light" type="button" data-install-dismiss aria-label="Dismiss install prompt">x</button>
+      </div>
+    </aside>
+    <header class="public-header">
+      <nav class="public-nav" aria-label="Primary">
+        <a class="brand" href="/" aria-label="Gym PWA home">
+          <img src="/assets/icon.svg" alt="" width="36" height="36">
+          <span>Gym PWA</span>
+        </a>
+        <a class="button button-secondary" href="#login">Sign in</a>
+      </nav>
+    </header>
+
+    <main id="main" class="public-main">
+      <section class="hero-section" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Mobile-first gym operations</p>
+          <h1 id="hero-title">Gym Management PWA</h1>
+          <p class="hero-text">
+            A lightweight installable app shell for member management, attendance, workouts,
+            and future Supabase-backed gym operations.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="/app.html">Launch dashboard</a>
+            <button class="button button-secondary" type="button" data-install-button hidden>Install app</button>
+          </div>
+        </div>
+        <div class="hero-panel" aria-label="Account sign in">
+          <section id="login" class="auth-card" aria-labelledby="login-title">
+            <div class="auth-card-header">
+              <p class="eyebrow">Admin-created accounts</p>
+              <h2 id="login-title">Sign in</h2>
+              <p>Use the email and password issued by your gym administrator.</p>
+            </div>
+
+            <form class="auth-form" data-login-form novalidate>
+              <div class="field-group">
+                <label for="email">Email</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  inputmode="email"
+                  autocomplete="email"
+                  placeholder="name@example.com"
+                  required
+                >
+              </div>
+
+              <div class="field-group">
+                <label for="password">Password</label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  minlength="6"
+                  required
+                >
+              </div>
+
+              <div class="auth-message" data-auth-message role="status" aria-live="polite"></div>
+
+              <button class="button button-primary button-full" type="submit" data-login-submit>
+                Sign in
+              </button>
+            </form>
+
+            <div class="auth-footnote">
+              <p>Public self-registration is disabled. Phone login will be added in a later phase.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="feature-band" aria-labelledby="features-title">
+        <div class="section-heading">
+          <p class="eyebrow">Foundation</p>
+          <h2 id="features-title">Ready for offline-first operations</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <h3>Installable</h3>
+            <p>Manifest, service worker registration, and install prompt handling are wired.</p>
+          </article>
+          <article class="feature-card">
+            <h3>Supabase-ready</h3>
+            <p>Auth and client modules are separated for later Supabase URL and anon key setup.</p>
+          </article>
+          <article class="feature-card">
+            <h3>Low overhead</h3>
+            <p>No frameworks, no bundling, and static Netlify-compatible files.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,568 @@
+Gym Management PWA — Complete Development Brief
+
+the project is best positioned as a mobile-first Progressive Web App (PWA) focused on gym operations, attendance automation, member retention, and lightweight business management.
+
+The system should prioritise:
+
+operational simplicity,
+cross-device access,
+low maintenance,
+offline resilience,
+and future SaaS scalability.
+
+Core stack direction:
+
+Frontend: Vanilla HTML/CSS/JavaScript
+Backend services: Supabase
+Hosting: Netlify
+Database: PostgreSQL (via Supabase)
+Authentication: Supabase Auth
+Deployment model: Static PWA + cloud backend
+1. PROJECT OVERVIEW (Executive Summary)
+Project Name
+
+Gym Management Progressive Web App (Gym PWA)
+
+Purpose
+
+Develop a full-featured gym management system that:
+
+helps gym owners manage operations,
+automates attendance,
+tracks memberships/payments,
+improves member retention,
+and provides members with a convenient mobile-first experience.
+
+The application will function as:
+
+an installable PWA,
+a cross-device synced system,
+and a lightweight SaaS-ready architecture.
+2. PRODUCT REQUIREMENTS DOCUMENT (PRD)
+2.1 Product Vision
+
+Create a modern gym management ecosystem that replaces:
+
+notebooks,
+spreadsheets,
+WhatsApp coordination,
+and manual attendance systems.
+
+The platform should become the gym’s operational control centre.
+
+2.2 Primary Users
+Gym Manager / Admin
+
+Responsible for:
+
+member management,
+memberships,
+payments,
+attendance oversight,
+trainer coordination,
+analytics.
+Trainers
+
+Responsible for:
+
+assigned members,
+workout programs,
+progress logs,
+attendance follow-up.
+Members
+
+Responsible for:
+
+viewing memberships,
+scanning attendance QR,
+viewing workouts,
+tracking progress.
+2.3 Core Product Goals
+Goal	Outcome
+Reduce operational chaos	Centralised management
+Improve retention	Attendance monitoring + reminders
+Protect revenue	Membership expiry tracking
+Modernise gym operations	QR attendance + digital workflows
+Improve accessibility	Installable PWA
+Enable scalability	SaaS-capable architecture
+2.4 MVP Feature Set
+Admin Features
+Dashboard overview
+Member management
+Membership plans
+QR attendance generation
+Attendance analytics
+Payment tracking
+Trainer management
+Reports
+Member Features
+Login
+Membership status
+QR attendance scanner
+Workout programs
+Progress tracking
+Notifications
+Trainer Features
+Assigned members
+Workout assignment
+Progress notes
+Attendance monitoring
+2.5 Attendance System (Critical Feature)
+Attendance Method
+
+Attendance will use:
+
+dynamic QR code scanning.
+Attendance Flow
+Admin generates attendance QR.
+QR validity is configured:
+Weekly
+Fortnightly
+Monthly
+QR is displayed physically inside the gym.
+Member opens installed PWA.
+Member scans QR.
+App validates:
+membership status,
+QR validity,
+user role.
+Attendance entry is logged.
+2.6 QR System Rules
+QR Must NOT Contain
+passwords,
+payment data,
+sensitive information.
+QR Should Contain
+gym identifier,
+attendance token,
+expiry metadata,
+validation signature.
+2.7 QR Validity Modes
+Type	Validity
+Weekly	7 days
+Fortnight	14 days
+Monthly	30 days
+2.8 Attendance Validation Rules
+
+Attendance succeeds only if:
+
+member account exists,
+membership is active,
+QR token is valid,
+token has not expired.
+2.9 Notifications
+Member Notifications
+Membership expiry
+Missed attendance
+Workout reminders
+Announcements
+Admin Notifications
+Expiring memberships
+Inactive members
+Failed attendance attempts
+2.10 PWA Requirements
+
+The application must:
+
+install to home screen,
+support offline caching,
+behave like a standalone mobile app,
+support push notifications,
+use service workers,
+launch directly into dashboard when authenticated.
+3. SOFTWARE REQUIREMENTS SPECIFICATION (SRS)
+3.1 Functional Requirements
+FR-1 Authentication
+
+System shall:
+
+support secure login,
+use Supabase Auth,
+persist sessions,
+support role-based access.
+
+Supported roles:
+
+Admin
+Trainer
+Member
+FR-2 User Management
+
+Admins shall:
+
+create users,
+assign trainers,
+manage memberships,
+disable accounts.
+
+Members cannot self-register online.
+
+FR-3 Membership Management
+
+System shall:
+
+create membership plans,
+assign validity periods,
+track expiry dates,
+record renewals,
+store payment references.
+FR-4 Attendance Management
+
+System shall:
+
+generate QR attendance tokens,
+validate attendance scans,
+prevent invalid scans,
+log timestamps.
+FR-5 QR Code Generator
+
+Admins shall:
+
+generate dynamic QR codes,
+select validity duration,
+regenerate tokens,
+revoke expired tokens.
+FR-6 QR Scanner
+
+Members shall:
+
+scan QR using device camera,
+receive success/failure feedback,
+see attendance history.
+FR-7 Dashboard Analytics
+
+Admins shall view:
+
+active members,
+attendance trends,
+revenue overview,
+expiring memberships,
+member inactivity.
+FR-8 Workout Management
+
+Trainers shall:
+
+assign workouts,
+edit routines,
+track completion.
+FR-9 Progress Tracking
+
+Members shall track:
+
+weight,
+measurements,
+notes,
+progress photos.
+FR-10 Notifications
+
+System shall support:
+
+push notifications,
+reminder scheduling,
+attendance alerts.
+3.2 Non-Functional Requirements
+Performance
+Initial load under 3 seconds on 4G.
+QR validation under 2 seconds.
+Availability
+Target uptime: 99%.
+Scalability
+
+Architecture must support:
+
+multiple gyms,
+multi-tenant SaaS expansion.
+Security
+HTTPS only.
+JWT authentication.
+Role-based access control.
+Row-Level Security (RLS).
+Mobile Optimisation
+
+Primary target:
+
+Android smartphones.
+3.3 Accessibility Requirements
+
+System shall support:
+
+readable contrast,
+keyboard navigation,
+accessible forms,
+touch-friendly controls.
+3.4 Offline Requirements
+
+PWA shall:
+
+cache static assets,
+support temporary offline usage,
+queue attendance attempts for sync later (future phase).
+4. SYSTEM ARCHITECTURE DOCUMENT (SAD)
+4.1 Architecture Overview
+
+Architecture Model:
+
+JAMstack-style frontend
+Backend-as-a-Service (BaaS)
+
+Structure:
+
+PWA Frontend
+(HTML/CSS/JS)
+       ↓
+Supabase SDK/API
+       ↓
+Supabase Backend
+(Auth + PostgreSQL + Storage)
+
+Hosting:
+
+Netlify serves static assets.
+Supabase handles dynamic services.
+4.2 Technology Stack
+Layer	Technology
+Frontend	HTML/CSS/Vanilla JS
+PWA	Service Workers + Manifest
+Backend	Supabase
+Database	PostgreSQL
+Auth	Supabase Auth
+Hosting	Netlify
+QR Generation	QRCode.js or equivalent
+QR Scanning	html5-qrcode or equivalent
+4.3 Database Architecture
+Tables
+users
+Field	Type
+id	UUID
+fullname	TEXT
+email	TEXT
+phone	TEXT
+role	ENUM
+assigned_trainer	UUID
+created_at	TIMESTAMP
+memberships
+Field	Type
+id	UUID
+user_id	UUID
+type	TEXT
+start_date	DATE
+end_date	DATE
+status	TEXT
+attendance_qr_tokens
+Field	Type
+id	UUID
+token	TEXT
+validity_type	TEXT
+issued_at	TIMESTAMP
+expires_at	TIMESTAMP
+generated_by	UUID
+active	BOOLEAN
+attendance_logs
+Field	Type
+id	UUID
+user_id	UUID
+qr_token_id	UUID
+scanned_at	TIMESTAMP
+status	TEXT
+payments
+Field	Type
+id	UUID
+user_id	UUID
+amount	DECIMAL
+method	TEXT
+reference	TEXT
+paid_at	TIMESTAMP
+workout_programs
+Field	Type
+id	UUID
+title	TEXT
+description	TEXT
+created_by	UUID
+user_workouts
+Field	Type
+id	UUID
+user_id	UUID
+workout_id	UUID
+assigned_at	TIMESTAMP
+progress_logs
+Field	Type
+id	UUID
+user_id	UUID
+weight	DECIMAL
+notes	TEXT
+created_at	TIMESTAMP
+4.4 Authentication Architecture
+
+Authentication provider:
+
+Supabase Auth
+
+Supported methods:
+
+Email/password
+Phone/password (future)
+
+Session handling:
+
+JWT tokens
+persistent sessions
+4.5 Role-Based Access Control
+Role	Permissions
+Admin	Full system access
+Trainer	Assigned member access
+Member	Own profile only
+4.6 Row-Level Security (RLS)
+
+Examples:
+
+Members
+
+Can only:
+
+view own attendance,
+view own workouts,
+view own payments.
+Trainers
+
+Can only:
+
+access assigned members.
+Admins
+
+Can access:
+
+all records.
+4.7 PWA Architecture
+Components
+manifest.json
+service worker
+offline cache
+install prompt
+standalone mode detection
+4.8 Offline Cache Strategy
+
+Use:
+
+Cache First for static assets
+Network First for dynamic data
+
+Static assets:
+
+CSS
+JS
+logos
+icons
+
+Dynamic data:
+
+attendance
+memberships
+payments
+4.9 Routing Logic
+Browser Mode + No Session
+
+→ Public landing page
+
+Browser Mode + Session
+
+→ Dashboard
+
+Installed PWA + Session
+
+→ Direct dashboard launch
+
+4.10 Deployment Architecture
+
+Frontend:
+
+deployed on Netlify
+
+Backend:
+
+hosted on Supabase
+
+Environment Variables:
+
+SUPABASE_URL
+SUPABASE_ANON_KEY
+4.11 Security Considerations
+Required
+HTTPS
+secure session storage
+RLS enforcement
+token validation
+QR expiry validation
+Avoid
+storing secrets in frontend,
+storing auth in localStorage manually,
+exposing raw database tables publicly.
+4.12 Future SaaS Expansion
+
+Architecture should support:
+
+multiple gyms,
+gym-specific branding,
+isolated tenant data,
+subscription billing,
+white-label deployments.
+
+Recommended future addition:
+
+gyms table with tenant relationships.
+5. RECOMMENDED PROJECT STRUCTURE
+/assets
+/components
+/pages
+/scripts
+/styles
+/pwa
+
+index.html
+app.html
+manifest.json
+sw.js
+
+Suggested JS modules:
+
+auth.js
+attendance.js
+qr.js
+install.js
+router.js
+session.js
+storage.js
+notifications.js
+supabase.js
+6. DEVELOPMENT PHASES
+Phase 1 — Foundation
+PWA scaffold
+Supabase setup
+Auth
+Routing
+Install flow
+Phase 2 — Core Operations
+Members
+Memberships
+Attendance QR system
+Dashboard analytics
+Phase 3 — Member Features
+Workouts
+Progress tracking
+Notifications
+Phase 4 — Advanced Features
+Offline sync queue
+Real-time updates
+SaaS multi-tenancy
+Mobile money integration
+7. SUCCESS CRITERIA
+
+The project is successful when:
+
+PWA installs properly,
+authentication works cross-device,
+QR attendance functions reliably,
+attendance logs accurately,
+memberships are tracked automatically,
+managers can monitor operations centrally,
+system works well on low-end Android devices,
+and architecture supports future scaling.
