@@ -1,5 +1,4 @@
 import { getSupabaseClientReady } from './supabase.js';
-import { normalizeRole } from './permissions.js';
 import {
   attachProfileToSession,
   attachProfileToUser,
@@ -245,5 +244,5 @@ function toAuthMessage(error, ready) {
 }
 
 function getRoleFromUser(user) {
-  return getProfileRole(user) || normalizeRole(user?.app_metadata?.role || user?.user_metadata?.role);
+  return getProfileRole(user);
 }

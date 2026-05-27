@@ -1,32 +1,25 @@
 import { canAccessRoute, getDefaultRouteForRole, getVisibleRoutes, hasCapability } from './permissions.js';
+import { getCurrentUserRole } from './session.js';
+import { createAdminDashboardView, initAdminDashboardPage } from '../pages/admin/dashboard.js';
+import { createUsersView, initUsersPage } from '../pages/admin/users.js';
 
 const ROUTES = {
   dashboard: {
     title: 'Dashboard',
-    description: 'Operational overview for attendance, memberships, and gym activity.',
-    metrics: [
-      ['Active members', '128'],
-      ['Today attendance', '42'],
-      ['Expiring soon', '9']
-    ],
-    items: [
-      ['QR attendance module', 'Planned'],
-      ['Membership expiry tracking', 'Planned'],
-      ['Revenue summary', 'Planned']
-    ]
+    description: 'Operational overview for attendance, memberships, and gym activity.'
   },
   members: {
-    title: 'Members',
-    description: 'Placeholder for member profiles, memberships, trainers, and account status.',
+    title: 'Users',
+    description: 'Admin tools for profile review, role filters, trainer assignment, and account status.',
     metrics: [
-      ['Member records', 'Ready'],
+      ['User records', 'Live'],
       ['Trainer assignment', 'Ready'],
       ['RLS policies', 'Supabase']
     ],
     items: [
-      ['Create member accounts from admin flow', 'Future'],
-      ['Disable inactive accounts', 'Future'],
-      ['Review assigned trainer access', 'Future']
+      ['List all public user profiles', 'Admin'],
+      ['Disable inactive accounts', 'Ready'],
+      ['Review assigned trainer access', 'Ready']
     ]
   },
   attendance: {
@@ -73,16 +66,24 @@ const ROUTES = {
   }
 };
 
-export function initRouter({ target, navItems, session, role, supabaseReady }) {
+export function initRouter({ target, navItems, session, supabaseReady }) {
   if (!target) {
     return;
   }
 
-  renderNavigation(navItems, role);
+  let renderRequestId = 0;
 
-  const renderRoute = () => {
+  const renderRoute = async () => {
+    const requestId = ++renderRequestId;
     const routeName = normalizeRoute(window.location.hash);
     const route = ROUTES[routeName] || ROUTES.dashboard;
+    const role = await getCurrentUserRole({ session, forceRefresh: true });
+
+    if (requestId !== renderRequestId) {
+      return;
+    }
+
+    renderNavigation(navItems, role);
 
     if (!canAccessRoute(role, routeName)) {
       const fallbackRoute = getDefaultRouteForRole(role);
@@ -98,6 +99,7 @@ export function initRouter({ target, navItems, session, role, supabaseReady }) {
     document.title = `${route.title} | Gym PWA`;
     target.innerHTML = createView(routeName, route, { session, role, supabaseReady });
     target.focus({ preventScroll: true });
+    initializeRoute(target, routeName, { session, role });
 
     navItems.forEach((item) => {
       const active = item.dataset.route === routeName;
@@ -134,6 +136,14 @@ function renderNavigation(navItems, role) {
 }
 
 function createView(routeName, route, state) {
+  if (routeName === 'dashboard' && state.role === 'admin') {
+    return createAdminDashboardView(state);
+  }
+
+  if (routeName === 'members') {
+    return createUsersView(state);
+  }
+
   const view = routeName === 'dashboard'
     ? getDashboardView(state.role)
     : route;
@@ -188,6 +198,16 @@ function createView(routeName, route, state) {
   `;
 }
 
+function initializeRoute(target, routeName, state) {
+  if (routeName === 'dashboard') {
+    initAdminDashboardPage({ target, role: state.role });
+  }
+
+  if (routeName === 'members') {
+    initUsersPage({ target, session: state.session, role: state.role });
+  }
+}
+
 function createBlockedView(route, role) {
   return `
     <section class="view-header" aria-labelledby="view-title">
@@ -200,20 +220,6 @@ function createBlockedView(route, role) {
 
 function getDashboardView(role) {
   const dashboards = {
-    admin: {
-      title: 'Admin Dashboard',
-      description: 'Full gym operations overview for members, attendance, trainers, settings, and SaaS-ready tenant management.',
-      metrics: [
-        ['Access scope', 'Full'],
-        ['Member visibility', 'All'],
-        ['Settings', 'Enabled']
-      ],
-      items: [
-        ['Manage gym-wide attendance and QR tokens', 'Admin'],
-        ['Review memberships, payments, and inactive members', 'Admin'],
-        ['Configure tenant and role settings', 'Admin']
-      ]
-    },
     trainer: {
       title: 'Trainer Dashboard',
       description: 'Assigned-member workspace for attendance follow-up, workout assignment, and progress review.',

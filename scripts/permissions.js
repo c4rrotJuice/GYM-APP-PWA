@@ -14,7 +14,7 @@ export const ROUTE_PERMISSIONS = Object.freeze({
     roles: [ROLES.ADMIN, ROLES.TRAINER, ROLES.MEMBER]
   },
   members: {
-    label: 'Members',
+    label: 'Users',
     roles: [ROLES.ADMIN, ROLES.TRAINER]
   },
   workouts: {

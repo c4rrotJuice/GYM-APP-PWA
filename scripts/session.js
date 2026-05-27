@@ -1,8 +1,11 @@
 import { getSupabaseClientReady } from './supabase.js';
 import { getRoleCapabilities, normalizeRole } from './permissions.js';
-import { attachProfileToSession, getCurrentUserProfile, getProfileRole } from './profiles.js';
+import { attachProfileToSession, getCurrentUserProfile } from './profiles.js';
+
+const ROLE_CACHE_TTL_MS = 60 * 1000;
 
 let authSubscription = null;
+let currentUserRoleCache = null;
 
 export async function getCurrentSession() {
   return restoreSession();
@@ -78,6 +81,8 @@ export async function watchAuthState(callback) {
   }
 
   const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+    invalidateCurrentUserRoleCache();
+
     if (!session?.user) {
       callback(event, session);
       return;
@@ -91,11 +96,43 @@ export async function watchAuthState(callback) {
   return authSubscription;
 }
 
-export function getUserRole(session) {
-  return getProfileRole(session) || normalizeRole(
-    session?.user?.app_metadata?.role ||
-    session?.user?.user_metadata?.role
-  );
+export async function getCurrentUserRole({ forceRefresh = false, session = null, supabase = null } = {}) {
+  const client = supabase || await getSupabaseClientReady();
+
+  if (!client) {
+    return null;
+  }
+
+  const userId = await getAuthenticatedUserId(client, session);
+
+  if (!userId) {
+    invalidateCurrentUserRoleCache();
+    return null;
+  }
+
+  if (!forceRefresh && isRoleCacheFresh(userId)) {
+    return currentUserRoleCache.role;
+  }
+
+  const { profile, error } = await getCurrentUserProfile(client, userId);
+
+  if (error || !profile) {
+    invalidateCurrentUserRoleCache();
+    return null;
+  }
+
+  const role = normalizeRole(profile.role);
+  currentUserRoleCache = {
+    userId,
+    role,
+    expiresAt: Date.now() + ROLE_CACHE_TTL_MS
+  };
+
+  return role;
+}
+
+export function invalidateCurrentUserRoleCache() {
+  currentUserRoleCache = null;
 }
 
 export function getTenantId(session) {
@@ -110,8 +147,8 @@ export function getTenantId(session) {
   );
 }
 
-export function getSessionContext(session) {
-  const role = getUserRole(session);
+export async function getSessionContext(session) {
+  const role = await getCurrentUserRole({ session });
 
   return {
     session,
@@ -157,4 +194,37 @@ function isExpired(session) {
 
 function isOnline() {
   return globalThis.navigator?.onLine !== false;
+}
+
+async function getAuthenticatedUserId(supabase, session) {
+  if (session?.user?.id) {
+    return session.user.id;
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error || !data?.session?.user?.id) {
+    return null;
+  }
+
+  let currentSession = data.session;
+
+  if (isExpired(currentSession)) {
+    const refreshed = await supabase.auth.refreshSession();
+
+    if (refreshed.error || !refreshed.data?.session?.user?.id) {
+      return null;
+    }
+
+    currentSession = refreshed.data.session;
+  }
+
+  return currentSession.user.id;
+}
+
+function isRoleCacheFresh(userId) {
+  return Boolean(
+    currentUserRoleCache?.userId === userId &&
+    currentUserRoleCache.expiresAt > Date.now()
+  );
 }

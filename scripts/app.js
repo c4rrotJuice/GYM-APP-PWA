@@ -24,7 +24,6 @@ if (!authState.allowed) {
     target: document.querySelector('#app-view'),
     navItems: document.querySelectorAll('[data-route]'),
     session: authState.session,
-    role: authState.role,
     supabaseReady: Boolean(supabase)
   });
 }

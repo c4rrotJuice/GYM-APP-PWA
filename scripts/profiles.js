@@ -14,6 +14,7 @@ const PROFILE_COLUMNS = [
 ].join(', ');
 
 const INACTIVE_ACCOUNT_VALUES = ['suspended', 'disabled', 'inactive'];
+const MANAGEABLE_ROLES = new Set(['admin', 'trainer', 'member']);
 const DEFAULT_PROFILE_ROLE = 'member';
 const DEFAULT_FULLNAME = 'New Member';
 
@@ -68,6 +69,116 @@ export async function getCurrentUserProfile(supabase, userId) {
   }
 
   return fetchUserProfile(supabase, userId);
+}
+
+export async function listUsers({ role } = {}) {
+  const supabase = await getSupabaseClientReady();
+
+  if (!supabase) {
+    return { users: [], error: new Error('Supabase is not configured for this deployment.') };
+  }
+
+  const normalizedRole = normalizeRole(role);
+  let query = supabase
+    .from('users')
+    .select(PROFILE_COLUMNS)
+    .order('fullname', { ascending: true });
+
+  if (normalizedRole) {
+    query = query.eq('role', normalizedRole);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return { users: [], error };
+  }
+
+  return { users: (data || []).map(normalizeProfile), error: null };
+}
+
+export async function updateUserAssignedTrainer(userId, trainerId) {
+  const supabase = await getSupabaseClientReady();
+
+  if (!supabase || !userId) {
+    return { profile: null, error: new Error('Missing user context for trainer assignment.') };
+  }
+
+  const existing = await fetchUserProfile(supabase, userId);
+  if (existing.error) {
+    return existing;
+  }
+
+  if (existing.profile.role !== 'member') {
+    return {
+      profile: null,
+      error: new Error('Trainer assignment is only available for member profiles.')
+    };
+  }
+
+  const assignedTrainer = String(trainerId || '').trim() || null;
+  if (assignedTrainer) {
+    const trainer = await fetchUserProfile(supabase, assignedTrainer);
+    if (trainer.error) {
+      return { profile: null, error: trainer.error };
+    }
+
+    if (trainer.profile.role !== 'trainer' || isInactiveProfile(trainer.profile)) {
+      return {
+        profile: null,
+        error: new Error('Assigned trainer must be an active trainer profile.')
+      };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .update({
+      assigned_trainer: assignedTrainer,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', userId)
+    .select(PROFILE_COLUMNS)
+    .single();
+
+  if (error) {
+    return { profile: null, error };
+  }
+
+  return { profile: normalizeProfile(data), error: null };
+}
+
+export async function deactivateUserProfile(userId) {
+  const supabase = await getSupabaseClientReady();
+
+  if (!supabase || !userId) {
+    return { profile: null, error: new Error('Missing user context for deactivation.') };
+  }
+
+  const existing = await fetchUserProfile(supabase, userId);
+  if (existing.error) {
+    return existing;
+  }
+
+  if (!MANAGEABLE_ROLES.has(existing.profile.role)) {
+    return { profile: null, error: new Error('This user profile does not have a manageable role.') };
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .update({
+      account_status: 'disabled',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', userId)
+    .select(PROFILE_COLUMNS)
+    .single();
+
+  if (error) {
+    return { profile: null, error };
+  }
+
+  return { profile: normalizeProfile(data), error: null };
 }
 
 async function fetchUserProfile(supabase, userId, { allowMissing = false } = {}) {
