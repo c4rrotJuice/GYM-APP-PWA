@@ -1,7 +1,12 @@
 import { getSupabaseClientReady } from './supabase.js';
 import { normalizeRole } from './permissions.js';
-
-const ACCOUNT_SUSPENDED_VALUES = ['suspended', 'disabled', 'inactive'];
+import {
+  attachProfileToSession,
+  attachProfileToUser,
+  getCurrentUserProfile,
+  getProfileRole,
+  isInactiveProfile
+} from './profiles.js';
 
 export async function getAuthenticatedUser() {
   const supabase = await getSupabaseClientReady();
@@ -40,7 +45,19 @@ export async function signInWithEmailPassword({ email, password }) {
     };
   }
 
-  if (isSuspendedAccount(data.user)) {
+  const { profile, error: profileError } = await getCurrentUserProfile(supabase, data.user.id);
+
+  if (profileError || !profile) {
+    await supabase.auth.signOut({ scope: 'local' });
+    return {
+      session: null,
+      user: null,
+      error: profileError || new Error('No profile was found for this account.'),
+      ready: true
+    };
+  }
+
+  if (isInactiveProfile(profile)) {
     await supabase.auth.signOut({ scope: 'local' });
     return {
       session: null,
@@ -50,7 +67,7 @@ export async function signInWithEmailPassword({ email, password }) {
     };
   }
 
-  if (!getRoleFromUser(data.user)) {
+  if (!profile.role) {
     await supabase.auth.signOut({ scope: 'local' });
     return {
       session: null,
@@ -60,9 +77,12 @@ export async function signInWithEmailPassword({ email, password }) {
     };
   }
 
+  const session = attachProfileToSession(data.session, profile);
+  const user = attachProfileToUser(data.user, profile);
+
   return {
-    session: data.session,
-    user: data.user,
+    session,
+    user,
     error: null,
     ready: true
   };
@@ -217,21 +237,13 @@ function toAuthMessage(error, ready) {
     return 'This account is not ready yet. Contact your gym administrator.';
   }
 
+  if (message.includes('no rows') || message.includes('profile')) {
+    return 'This account profile is missing. Contact your gym administrator.';
+  }
+
   return error?.message || 'Unable to sign in right now.';
 }
 
-function isSuspendedAccount(user) {
-  const status = String(
-    user.app_metadata?.status ||
-    user.app_metadata?.account_status ||
-    user.user_metadata?.status ||
-    user.user_metadata?.account_status ||
-    ''
-  ).toLowerCase();
-
-  return ACCOUNT_SUSPENDED_VALUES.includes(status);
-}
-
 function getRoleFromUser(user) {
-  return normalizeRole(user?.app_metadata?.role || user?.user_metadata?.role);
+  return getProfileRole(user) || normalizeRole(user?.app_metadata?.role || user?.user_metadata?.role);
 }
