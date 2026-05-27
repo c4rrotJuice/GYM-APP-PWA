@@ -1,0 +1,169 @@
+Gym PWA — Post-Phase 1 Incremental Development Plan
+Phase 2 — Core Identity + Member System (System Becomes Real)
+
+Goal: Users exist properly, roles matter, and the system stops being “empty infrastructure”.
+
+Build in this phase
+Supabase Auth fully enforced (email/password sessions stable)
+Role-based routing (Admin / Trainer / Member)
+User profile table fully synced with auth.users
+Member creation flow (admin-only onboarding)
+Basic admin dashboard shell with real data
+Key features
+Create/edit/deactivate members
+Assign trainer to member
+View all users by role
+Protected routes (no role bypass possible)
+Deliverable
+
+A logged-in system where:
+
+each user lands in the correct dashboard with real persisted identity
+
+Phase 3 — Membership Engine (Revenue Layer Comes Alive)
+
+Goal: System starts tracking money and validity like a real gym.
+
+Build in this phase
+Membership plan creation (Admin)
+Assign membership to users
+Start/end date automation
+Membership status engine (active / expired / pending)
+Key features
+Expiry detection logic (frontend + backend validation)
+Member dashboard shows:
+plan type
+expiry countdown
+status badge
+Admin view: expiring memberships list
+Deliverable
+
+Gym can now “run subscriptions” digitally instead of manual tracking
+
+ Phase 4 — QR Attendance System (Core Innovation Layer)
+
+Goal: Replace physical attendance books completely.
+
+Build in this phase
+QR token generation system (admin only)
+QR validity modes:
+weekly / fortnight / monthly
+QR display dashboard (large screen mode)
+QR scanning module (mobile PWA)
+Key features
+QR contains:
+gym_id
+token
+expiry
+signature
+Validation pipeline:
+membership active check
+token validity check
+expiry check
+Attendance logging to DB
+Deliverable
+
+Members can physically scan and get real-time attendance logged in Supabase
+
+Phase 5 — Operational Dashboard + Analytics Layer
+
+Goal: Turn raw data into decisions.
+
+Build in this phase
+Admin analytics dashboard
+Attendance heatmaps (simple counts first)
+Membership insights
+Key features
+Active members count
+Daily/weekly attendance stats
+Expiring memberships alerts
+Inactive members detection (no attendance in X days)
+Deliverable
+
+Gym owner can actually “see the business”
+
+Phase 6 — Trainer System + Workout Engine
+
+Goal: Trainers become functional actors in the system.
+
+Build in this phase
+Trainer assignment logic
+Workout program creation
+Assign workouts to members
+Key features
+Trainer dashboard:
+assigned members list
+workout creation
+Member dashboard:
+assigned workouts
+progress view (basic)
+Deliverable
+
+System now supports coaching workflow, not just admin tracking
+
+Phase 7 — Progress Tracking + Member Engagement
+
+Goal: Members start interacting beyond attendance.
+
+Build in this phase
+Progress logs (weight, notes)
+Photo uploads (Supabase storage)
+Attendance history view
+Key features
+Member progress timeline
+Trainer feedback notes
+Simple before/after tracking structure
+Deliverable
+
+Gym becomes sticky — members see their evolution
+
+Phase 8 — Notifications System (Retention Layer)
+
+Goal: Bring users back automatically.
+
+Build in this phase
+Push notification setup (PWA service worker)
+Notification triggers:
+membership expiry
+missed attendance
+workout reminders
+Key features
+Admin broadcast messages
+Automated reminder rules engine
+Deliverable
+
+System actively drives retention, not passive tracking
+
+ Phase 9 — Offline Sync + Reliability Layer
+
+Goal: Make it resilient in low-connectivity environments (important for Uganda context).
+
+Build in this phase
+Offline attendance queue
+Sync when online
+Cache-first improvements
+Failure retry logic
+Key features
+Temporary local storage queue
+Conflict resolution rules
+Sync status indicators
+Deliverable
+
+Even if internet is bad, attendance never breaks
+
+ Phase 10 — SaaS Expansion Layer (Multi-Gym Architecture)
+
+Goal: Turn this into a sellable product.
+
+Build in this phase
+gyms table (multi-tenancy)
+gym_id isolation across all tables
+branding per gym (logo, name, theme)
+subscription model scaffolding
+Key features
+Gym-specific dashboards
+Data isolation via RLS
+SaaS-ready architecture
+Deliverable
+
+You now have a deployable SaaS product, not just a single gym tool

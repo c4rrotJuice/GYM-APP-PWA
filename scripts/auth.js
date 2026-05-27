@@ -3,7 +3,7 @@ import { normalizeRole } from './permissions.js';
 import {
   attachProfileToSession,
   attachProfileToUser,
-  getCurrentUserProfile,
+  ensureUserProfile,
   getProfileRole,
   isInactiveProfile
 } from './profiles.js';
@@ -45,7 +45,7 @@ export async function signInWithEmailPassword({ email, password }) {
     };
   }
 
-  const { profile, error: profileError } = await getCurrentUserProfile(supabase, data.user.id);
+  const { profile, error: profileError } = await ensureUserProfile(data.user);
 
   if (profileError || !profile) {
     await supabase.auth.signOut({ scope: 'local' });
