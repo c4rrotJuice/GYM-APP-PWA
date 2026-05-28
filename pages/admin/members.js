@@ -58,7 +58,7 @@ export function createMembersView({ role }) {
   `;
 }
 
-export async function initMembersPage({ target, session, role }) {
+export async function initMembersPage({ target, session, appContext, role }) {
   const form = target?.querySelector('[data-admin-create-user-form]');
   if (!form || role !== 'admin') {
     return;
@@ -73,7 +73,7 @@ export async function initMembersPage({ target, session, role }) {
   syncTrainerField(roleSelect, trainerField, trainerSelect);
 
   try {
-    const trainers = await listTrainerOptions({ role, session });
+    const trainers = await listTrainerOptions({ role, session: appContext || session });
     populateTrainerSelect(trainerSelect, trainers);
   } catch (error) {
     showMessage(message, error.message || 'Unable to load trainers.', 'error');
@@ -90,7 +90,7 @@ export async function initMembersPage({ target, session, role }) {
 
     try {
       const payload = getFormPayload(form);
-      const result = await createUserAsAdmin(payload, { session, role });
+      const result = await createUserAsAdmin(payload, { session: appContext?.session || session, role });
       form.reset();
       syncTrainerField(roleSelect, trainerField, trainerSelect);
       showMessage(

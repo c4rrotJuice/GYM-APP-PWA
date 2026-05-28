@@ -12,18 +12,19 @@ watchConnectionStatus();
 
 const routeName = window.location.hash.replace('#', '').trim().toLowerCase() || 'dashboard';
 const authState = await bootstrapAuthenticatedRoute({ routeName });
+const appView = document.querySelector('#app-view');
 
 if (!authState.allowed) {
-  document.querySelector('#app-view')?.setAttribute('aria-busy', 'true');
+  appView?.setAttribute('aria-busy', 'true');
 } else {
   const supabase = getSupabaseClient();
-  renderAccountNavigation(authState.session);
+  renderAccountNavigation(authState.appContext);
   initLogoutButton();
 
   initRouter({
-    target: document.querySelector('#app-view'),
+    target: appView,
     navItems: document.querySelectorAll('[data-route]'),
-    session: authState.session,
+    appContext: authState.appContext,
     supabaseReady: Boolean(supabase)
   });
 }

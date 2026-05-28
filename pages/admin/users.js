@@ -73,7 +73,7 @@ export function createUsersView({ role }) {
   `;
 }
 
-export async function initUsersPage({ target, role, session }) {
+export async function initUsersPage({ target, role, appContext }) {
   const root = target?.querySelector('[data-user-admin]');
   if (!root || role !== 'admin') {
     return;
@@ -84,7 +84,7 @@ export async function initUsersPage({ target, role, session }) {
     users: [],
     trainers: [],
     expandedUserId: null,
-    session
+    appContext
   };
 
   root.addEventListener('click', (event) => handleUserClick(event, root, state));
@@ -102,7 +102,7 @@ export async function initUsersPage({ target, role, session }) {
 async function loadUsers(root, state) {
   setMessage(root, 'Loading users...', '');
 
-  const { users, error } = await listUsers({ session: state.session });
+  const { users, error } = await listUsers({ appContext: state.appContext });
   if (error) {
     state.users = [];
     state.trainers = [];
@@ -163,7 +163,7 @@ function renderUserRows(user, state) {
   const trainer = getTrainerLabel(user.assigned_trainer, state.users);
   const inactive = isInactiveProfile(user);
   const expanded = state.expandedUserId === user.id;
-  const self = state.session?.user?.id === user.id;
+  const self = state.appContext?.user?.id === user.id;
   const trainerControl = renderTrainerControl(user, state.trainers);
   const deactivateDisabled = inactive || self ? ' disabled' : '';
   const deactivateLabel = inactive ? 'Inactive' : 'Deactivate';
@@ -259,7 +259,7 @@ async function saveTrainerAssignment(root, state, userId) {
 
   setMessage(root, 'Saving trainer assignment...', '');
   const { profile, error } = await updateUserAssignedTrainer(userId, select.value, {
-    session: state.session
+    appContext: state.appContext
   });
   if (error) {
     setMessage(root, error.message || 'Unable to update trainer assignment.', 'error');
@@ -275,7 +275,7 @@ async function saveTrainerAssignment(root, state, userId) {
 async function deactivateUser(root, state, userId) {
   setMessage(root, 'Deactivating user...', '');
   const { profile, error } = await deactivateUserProfile(userId, {
-    session: state.session
+    appContext: state.appContext
   });
   if (error) {
     setMessage(root, error.message || 'Unable to deactivate user.', 'error');

@@ -3,6 +3,8 @@ import { getRoleCapabilities, normalizeRole } from './permissions.js';
 import { attachProfileToSession, getCurrentUserProfile, isInactiveProfile } from './profiles.js';
 
 const ROLE_CACHE_TTL_MS = 60 * 1000;
+const AUTH_NOTICE_KEY = 'gym-pwa-auth-notice';
+const INACTIVE_ACCOUNT_MESSAGE = 'This account is not active. Contact your gym administrator.';
 
 let authSubscription = null;
 let currentUserRoleCache = null;
@@ -22,7 +24,7 @@ export async function restoreSession({ verify = false } = {}) {
     const { data, error } = await supabase.auth.getSession();
 
     if (error || !data?.session) {
-      await clearLocalSupabaseSession(supabase);
+      await clearSupabaseSession(supabase);
       return null;
     }
 
@@ -31,7 +33,7 @@ export async function restoreSession({ verify = false } = {}) {
     if (isExpired(session)) {
       const refreshed = await supabase.auth.refreshSession();
       if (refreshed.error || !refreshed.data?.session) {
-        await clearLocalSupabaseSession(supabase);
+        await clearSupabaseSession(supabase);
         return null;
       }
 
@@ -41,7 +43,7 @@ export async function restoreSession({ verify = false } = {}) {
     if (verify && isOnline()) {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError || !userData?.user) {
-        await clearLocalSupabaseSession(supabase);
+        await clearSupabaseSession(supabase);
         return null;
       }
 
@@ -52,8 +54,25 @@ export async function restoreSession({ verify = false } = {}) {
     }
 
     const { profile, error: profileError } = await getCurrentUserProfile(supabase, session.user.id);
-    if (profileError || !profile || isInactiveProfile(profile) || !profile.gym_id) {
-      await clearLocalSupabaseSession(supabase);
+    if (profileError || !profile) {
+      await clearSupabaseSession(supabase, {
+        notice: 'This account profile is missing. Contact your gym administrator.'
+      });
+      return null;
+    }
+
+    if (isInactiveProfile(profile)) {
+      await clearSupabaseSession(supabase, {
+        scope: 'global',
+        notice: INACTIVE_ACCOUNT_MESSAGE
+      });
+      return null;
+    }
+
+    if (!profile.gym_id) {
+      await clearSupabaseSession(supabase, {
+        notice: 'This account is not assigned to a gym. Contact your gym administrator.'
+      });
       return null;
     }
 
@@ -89,12 +108,32 @@ export async function watchAuthState(callback) {
     }
 
     const { profile, error } = await getCurrentUserProfile(supabase, session.user.id);
-    callback(
-      event,
-      error || !profile || isInactiveProfile(profile) || !profile.gym_id
-        ? null
-        : attachProfileToSession(session, profile)
-    );
+    if (error || !profile) {
+      await clearSupabaseSession(supabase, {
+        notice: 'This account profile is missing. Contact your gym administrator.'
+      });
+      callback(event, null);
+      return;
+    }
+
+    if (isInactiveProfile(profile)) {
+      await clearSupabaseSession(supabase, {
+        scope: 'global',
+        notice: INACTIVE_ACCOUNT_MESSAGE
+      });
+      callback(event, null);
+      return;
+    }
+
+    if (!profile.gym_id) {
+      await clearSupabaseSession(supabase, {
+        notice: 'This account is not assigned to a gym. Contact your gym administrator.'
+      });
+      callback(event, null);
+      return;
+    }
+
+    callback(event, attachProfileToSession(session, profile));
   });
 
   authSubscription = data.subscription;
@@ -141,12 +180,12 @@ export function invalidateCurrentUserRoleCache() {
 }
 
 export function getTenantId(session) {
-  return session?.user?.profile?.gym_id || null;
+  return session?.gymId || session?.tenantId || session?.profile?.gym_id || session?.user?.profile?.gym_id || null;
 }
 
 export async function getSessionContext(session) {
-  const profile = session?.user?.profile || null;
-  const role = normalizeRole(profile?.role) || await getCurrentUserRole({ session });
+  const profile = session?.profile || session?.user?.profile || null;
+  const role = normalizeRole(session?.role || profile?.role) || await getCurrentUserRole({ session });
   const gymId = getTenantId(session);
 
   return {
@@ -157,8 +196,20 @@ export async function getSessionContext(session) {
     gymId,
     tenantId: gymId,
     status: profile?.account_status || null,
-    capabilities: getRoleCapabilities(role)
+    capabilities: getRoleCapabilities(role),
+    permissions: null,
+    isAuthenticated: Boolean(session?.user && profile && role && gymId)
   };
+}
+
+export function consumeAuthNotice() {
+  if (!hasSessionStorage()) {
+    return '';
+  }
+
+  const notice = sessionStorage.getItem(AUTH_NOTICE_KEY) || '';
+  sessionStorage.removeItem(AUTH_NOTICE_KEY);
+  return notice;
 }
 
 export function watchConnectionStatus() {
@@ -178,12 +229,26 @@ export function watchConnectionStatus() {
   window.addEventListener('offline', update);
 }
 
-async function clearLocalSupabaseSession(supabase) {
+async function clearSupabaseSession(supabase, { scope = 'local', notice = '' } = {}) {
+  storeAuthNotice(notice);
+
   try {
-    await supabase.auth.signOut({ scope: 'local' });
+    await supabase.auth.signOut({ scope });
   } catch (error) {
     console.warn('Unable to clear invalid Supabase session:', error);
   }
+}
+
+function storeAuthNotice(notice) {
+  if (!notice || !hasSessionStorage()) {
+    return;
+  }
+
+  sessionStorage.setItem(AUTH_NOTICE_KEY, notice);
+}
+
+function hasSessionStorage() {
+  return typeof sessionStorage !== 'undefined';
 }
 
 function isExpired(session) {

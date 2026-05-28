@@ -1,4 +1,6 @@
 import { getSupabaseClientReady } from './supabase.js';
+import { setAppContextFromSession } from './app-context.js';
+import { redirectToDashboard } from './guards.js';
 import {
   attachProfileToSession,
   attachProfileToUser,
@@ -6,6 +8,7 @@ import {
   getProfileRole,
   isInactiveProfile
 } from './profiles.js';
+import { consumeAuthNotice } from './session.js';
 
 export async function getAuthenticatedUser() {
   const supabase = await getSupabaseClientReady();
@@ -76,6 +79,16 @@ export async function signInWithEmailPassword({ email, password }) {
     };
   }
 
+  if (!profile.gym_id) {
+    await supabase.auth.signOut({ scope: 'local' });
+    return {
+      session: null,
+      user: null,
+      error: new Error('This account is not assigned to a gym. Contact your gym administrator.'),
+      ready: true
+    };
+  }
+
   const session = attachProfileToSession(data.session, profile);
   const user = attachProfileToUser(data.user, profile);
 
@@ -107,6 +120,11 @@ export function initLoginForm() {
     return;
   }
 
+  const authNotice = consumeAuthNotice();
+  if (authNotice) {
+    showMessage(message, authNotice, 'error');
+  }
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     clearMessage(message);
@@ -129,8 +147,9 @@ export function initLoginForm() {
         return;
       }
 
+      const appContext = await setAppContextFromSession(result.session);
       showMessage(message, 'Signed in. Opening dashboard...', 'success');
-      window.location.replace('/app.html#dashboard');
+      redirectToDashboard(appContext);
     } catch (error) {
       showMessage(message, toAuthMessage(error, true), 'error');
     } finally {
@@ -160,15 +179,16 @@ export function initLogoutButton({ redirectTo = '/index.html' } = {}) {
   });
 }
 
-export function renderAccountNavigation(session) {
+export function renderAccountNavigation(appContext) {
   const pill = document.querySelector('[data-account-pill]');
+  const user = appContext?.user || appContext?.session?.user || null;
 
-  if (!pill || !session?.user) {
+  if (!pill || !user) {
     return;
   }
 
-  const role = getRoleFromUser(session.user);
-  pill.textContent = `${role || 'unassigned'} · ${session.user.email || 'Signed in'}`;
+  const role = appContext?.role || getRoleFromUser(user);
+  pill.textContent = `${role || 'unassigned'} · ${user.email || 'Signed in'}`;
   pill.hidden = false;
 }
 

@@ -1,6 +1,6 @@
 import { getSupabaseClientReady } from './supabase.js';
-import { normalizeRole } from './permissions.js';
-import { getTenantScopedClient, requireGymId, scopedSelect, scopedUpdate } from './tenant-queries.js';
+import { getRoleCapabilities, normalizeRole } from './permissions.js';
+import { createQueryContext, requireGymId, scopedInsert, scopedSelect, scopedUpdate } from './tenant-queries.js';
 
 const PROFILE_COLUMNS = [
   'id',
@@ -38,16 +38,18 @@ export async function ensureUserProfile(user) {
     return { profile: null, error: new Error('No active gym is available for profile creation.') };
   }
 
-  const { data, error } = await supabase
-    .from('users')
-    .insert({
+  const { data, error } = await scopedInsert(
+    supabase,
+    'users',
+    {
       id: user.id,
-      gym_id: gymId,
       fullname: getFullnameFromUser(user),
       email: user.email || '',
       role: DEFAULT_PROFILE_ROLE,
       created_at: new Date().toISOString()
-    })
+    },
+    { gymId }
+  )
     .select(PROFILE_COLUMNS)
     .single();
 
@@ -80,19 +82,27 @@ export async function getCurrentUserProfile(supabase, userId) {
   return fetchUserProfile(supabase, userId);
 }
 
-export async function listUsers({ role, session, gymId } = {}) {
-  let supabase = null;
+export async function listUsers({ role, session, appContext, gymId } = {}) {
+  let queryContext = null;
 
   try {
-    supabase = await getTenantScopedClient();
-    gymId = requireGymId(gymId || session);
+    queryContext = await createQueryContext(appContext || session || { role, gymId }, { action: 'users:list' });
+    gymId = requireGymId(gymId || queryContext.gymId);
   } catch (error) {
     return { users: [], error };
   }
 
   const normalizedRole = normalizeRole(role);
-  let query = scopedSelect(supabase, 'users', PROFILE_COLUMNS, { gymId })
+  let query = scopedSelect(queryContext.supabase, 'users', PROFILE_COLUMNS, { gymId })
     .order('fullname', { ascending: true });
+
+  if (!queryContext.can('members:view_all')) {
+    if (!queryContext.userId || !queryContext.can('members:view_assigned')) {
+      return { users: [], error: new Error('Your account is not allowed to list users.') };
+    }
+
+    query = query.eq('assigned_trainer', queryContext.userId).eq('role', 'member');
+  }
 
   if (normalizedRole) {
     query = query.eq('role', normalizedRole);
@@ -107,12 +117,12 @@ export async function listUsers({ role, session, gymId } = {}) {
   return { users: (data || []).map(normalizeProfile), error: null };
 }
 
-export async function updateUserAssignedTrainer(userId, trainerId, { session, gymId } = {}) {
-  let supabase = null;
+export async function updateUserAssignedTrainer(userId, trainerId, { session, appContext, gymId } = {}) {
+  let queryContext = null;
 
   try {
-    supabase = await getTenantScopedClient();
-    gymId = requireGymId(gymId || session);
+    queryContext = await createQueryContext(appContext || session, { action: 'users:assign_trainer' });
+    gymId = requireGymId(gymId || queryContext.gymId);
   } catch (error) {
     return { profile: null, error };
   }
@@ -121,7 +131,7 @@ export async function updateUserAssignedTrainer(userId, trainerId, { session, gy
     return { profile: null, error: new Error('Missing user context for trainer assignment.') };
   }
 
-  const existing = await fetchUserProfile(supabase, userId);
+  const existing = await fetchUserProfile(queryContext.supabase, userId);
   if (existing.error) {
     return existing;
   }
@@ -135,7 +145,7 @@ export async function updateUserAssignedTrainer(userId, trainerId, { session, gy
 
   const assignedTrainer = String(trainerId || '').trim() || null;
   if (assignedTrainer) {
-    const trainer = await fetchUserProfile(supabase, assignedTrainer);
+    const trainer = await fetchUserProfile(queryContext.supabase, assignedTrainer);
     if (trainer.error) {
       return { profile: null, error: trainer.error };
     }
@@ -152,7 +162,7 @@ export async function updateUserAssignedTrainer(userId, trainerId, { session, gy
     }
   }
 
-  const { data, error } = await scopedUpdate(supabase, 'users', {
+  const { data, error } = await scopedUpdate(queryContext.supabase, 'users', {
       assigned_trainer: assignedTrainer,
       updated_at: new Date().toISOString()
     }, { gymId })
@@ -167,12 +177,12 @@ export async function updateUserAssignedTrainer(userId, trainerId, { session, gy
   return { profile: normalizeProfile(data), error: null };
 }
 
-export async function deactivateUserProfile(userId, { session, gymId } = {}) {
-  let supabase = null;
+export async function deactivateUserProfile(userId, { session, appContext, gymId } = {}) {
+  let queryContext = null;
 
   try {
-    supabase = await getTenantScopedClient();
-    gymId = requireGymId(gymId || session);
+    queryContext = await createQueryContext(appContext || session, { action: 'users:disable' });
+    gymId = requireGymId(gymId || queryContext.gymId);
   } catch (error) {
     return { profile: null, error };
   }
@@ -181,7 +191,7 @@ export async function deactivateUserProfile(userId, { session, gymId } = {}) {
     return { profile: null, error: new Error('Missing user context for deactivation.') };
   }
 
-  const existing = await fetchUserProfile(supabase, userId);
+  const existing = await fetchUserProfile(queryContext.supabase, userId);
   if (existing.error) {
     return existing;
   }
@@ -190,7 +200,7 @@ export async function deactivateUserProfile(userId, { session, gymId } = {}) {
     return { profile: null, error: new Error('This user profile does not have a manageable role.') };
   }
 
-  const { data, error } = await scopedUpdate(supabase, 'users', {
+  const { data, error } = await scopedUpdate(queryContext.supabase, 'users', {
       account_status: 'disabled',
       updated_at: new Date().toISOString()
     }, { gymId })
@@ -231,9 +241,18 @@ export function attachProfileToSession(session, profile) {
     return session;
   }
 
+  const normalizedProfile = normalizeProfile(profile);
+  const role = normalizedProfile.role;
+
   return {
     ...session,
-    user: attachProfileToUser(session.user, profile)
+    user: attachProfileToUser(session.user, normalizedProfile),
+    profile: normalizedProfile,
+    role,
+    gymId: normalizedProfile.gym_id,
+    tenantId: normalizedProfile.gym_id,
+    status: normalizedProfile.account_status,
+    capabilities: getRoleCapabilities(role)
   };
 }
 

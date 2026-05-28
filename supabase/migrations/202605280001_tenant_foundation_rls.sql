@@ -503,6 +503,14 @@ before insert or update on public.progress_logs
 for each row execute function app.enforce_tenant_row_integrity();
 
 alter table public.gyms enable row level security;
+alter table public.users enable row level security;
+alter table public.memberships enable row level security;
+alter table public.attendance_qr_tokens enable row level security;
+alter table public.attendance_logs enable row level security;
+alter table public.payments enable row level security;
+alter table public.workout_programs enable row level security;
+alter table public.user_workouts enable row level security;
+alter table public.progress_logs enable row level security;
 
 revoke all on table public.gyms from anon;
 grant select, update on table public.gyms to authenticated;
@@ -512,8 +520,10 @@ create policy gyms_select_scoped
 on public.gyms
 for select
 to authenticated
-using (id = app.current_gym_id());
+using (
+  id = app.current_gym_id()
   or id = app.default_gym_id()
+);
 
 drop policy if exists gyms_admin_update_scoped on public.gyms;
 create policy gyms_admin_update_scoped

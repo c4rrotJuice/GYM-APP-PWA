@@ -1,65 +1,76 @@
 import {
-  getCurrentUserRole,
+  clearAppContext,
+  hydrateAppContext,
+  refreshAppContext,
+  setAppContextFromSession
+} from './app-context.js';
+import {
   invalidateCurrentUserRoleCache,
-  restoreSession,
   watchAuthState
 } from './session.js';
 import { canAccessRoute, getDefaultRouteForRole, hasRole } from './permissions.js';
 
-const DEFAULT_AUTH_ROUTE = '/app.html#dashboard';
 const DEFAULT_PUBLIC_ROUTE = '/index.html';
 const DEFAULT_UNAUTHORIZED_ROUTE = '/unauthorized';
+const INTENDED_ROUTE_KEY = 'gym-pwa-intended-route';
 
 export async function bootstrapPublicRoute() {
-  const session = await restoreSession();
+  const appContext = await hydrateAppContext();
 
-  if (session) {
-    redirectToDashboard();
-    return { session, allowed: false };
+  if (appContext.isAuthenticated) {
+    redirectToDashboard(appContext);
+    return { appContext, session: appContext.session, allowed: false };
   }
 
-  watchAuthState((event, nextSession) => {
+  watchAuthState(async (event, nextSession) => {
     if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && nextSession) {
-      redirectToDashboard();
+      const nextContext = await setAppContextFromSession(nextSession);
+      redirectToDashboard(nextContext);
     }
   });
 
-  return { session: null, allowed: true };
+  return { appContext, session: null, allowed: true };
 }
 
 export async function bootstrapAuthenticatedRoute({ routeName = 'dashboard' } = {}) {
-  const session = await restoreSession({ verify: true });
+  const appContext = await hydrateAppContext({ verify: true, force: true });
 
-  if (!session) {
+  if (!appContext.isAuthenticated) {
+    rememberIntendedRoute();
     redirectToPublic();
-    return { session: null, allowed: false, role: null };
+    return { appContext, session: null, allowed: false, role: null };
   }
 
-  const role = await getCurrentUserRole({ session, forceRefresh: true });
-  const defaultRoute = getDefaultRouteForRole(role);
+  const defaultRoute = getDefaultRouteForRole(appContext);
 
   if (!defaultRoute) {
     redirectToPublic();
-    return { session, allowed: false, role };
+    return { appContext, session: appContext.session, allowed: false, role: appContext.role };
   }
 
-  if (!canAccessRoute(role, routeName)) {
-    window.location.hash = defaultRoute;
-    return { session, allowed: true, role, routeName: defaultRoute };
+  if (!canAccessRoute(appContext, routeName)) {
+    window.location.replace(`/app.html#${defaultRoute}`);
+    return {
+      appContext,
+      session: appContext.session,
+      allowed: true,
+      role: appContext.role,
+      routeName: defaultRoute
+    };
   }
 
-  let activeSession = session;
   const refreshRouteAccess = async ({ forceRefresh = true } = {}) => {
     const nextRoute = window.location.hash.replace('#', '').trim().toLowerCase() || 'dashboard';
-    const nextRole = await getCurrentUserRole({ session: activeSession, forceRefresh });
-    const nextDefaultRoute = getDefaultRouteForRole(nextRole);
+    const nextContext = await refreshAppContext({ verify: forceRefresh });
+    const nextDefaultRoute = getDefaultRouteForRole(nextContext);
 
-    if (!nextDefaultRoute) {
+    if (!nextContext.isAuthenticated || !nextDefaultRoute) {
+      rememberIntendedRoute();
       redirectToPublic();
       return;
     }
 
-    if (!canAccessRoute(nextRole, nextRoute)) {
+    if (!canAccessRoute(nextContext, nextRoute)) {
       window.location.replace(`/app.html#${nextDefaultRoute}`);
     }
   };
@@ -71,48 +82,56 @@ export async function bootstrapAuthenticatedRoute({ routeName = 'dashboard' } = 
 
   watchAuthState(async (event, nextSession) => {
     if (event === 'SIGNED_OUT' || !nextSession) {
-      activeSession = null;
+      clearAppContext();
+      rememberIntendedRoute();
       redirectToPublic();
       return;
     }
 
-    activeSession = nextSession;
+    await setAppContextFromSession(nextSession);
 
     if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
       refreshRouteAccess();
     }
   });
 
-  return { session, allowed: true, role, routeName };
+  return {
+    appContext,
+    session: appContext.session,
+    allowed: true,
+    role: appContext.role,
+    routeName
+  };
 }
 
-export async function requireRole(requiredRole, { session = null, redirect = true } = {}) {
-  const activeSession = session || await restoreSession({ verify: true });
+export async function requireRole(requiredRole, { appContext = null, redirect = true } = {}) {
+  const activeContext = appContext || await hydrateAppContext({ verify: true });
 
-  if (!activeSession) {
+  if (!activeContext.isAuthenticated) {
     if (redirect) {
+      rememberIntendedRoute();
       redirectToPublic();
     }
 
-    return { session: null, allowed: false, role: null };
+    return { appContext: activeContext, session: null, allowed: false, role: null };
   }
 
-  const role = await getCurrentUserRole({ session: activeSession, forceRefresh: true });
-  const allowed = hasRole(role, Array.isArray(requiredRole) ? requiredRole : [requiredRole]);
+  const allowed = hasRole(activeContext.role, Array.isArray(requiredRole) ? requiredRole : [requiredRole]);
 
   if (!allowed && redirect) {
     redirectToUnauthorized();
   }
 
-  return { session: activeSession, allowed, role };
+  return { appContext: activeContext, session: activeContext.session, allowed, role: activeContext.role };
 }
 
-export function redirectToDashboard() {
-  const destination = window.matchMedia('(display-mode: standalone)').matches
-    ? DEFAULT_AUTH_ROUTE
-    : '/app.html';
-
-  window.location.replace(destination);
+export function redirectToDashboard(appContext = null) {
+  const intendedRoute = consumeIntendedRoute();
+  const defaultRoute = getDefaultRouteForRole(appContext) || 'dashboard';
+  const route = intendedRoute && canAccessRoute(appContext, intendedRoute)
+    ? intendedRoute
+    : defaultRoute;
+  window.location.replace(`/app.html#${route}`);
 }
 
 export function redirectToPublic() {
@@ -129,4 +148,29 @@ export function redirectToUnauthorized() {
   }
 
   window.location.replace(DEFAULT_UNAUTHORIZED_ROUTE);
+}
+
+export function consumeIntendedRoute() {
+  if (!hasSessionStorage()) {
+    return '';
+  }
+
+  const route = sessionStorage.getItem(INTENDED_ROUTE_KEY) || '';
+  sessionStorage.removeItem(INTENDED_ROUTE_KEY);
+  return route;
+}
+
+function rememberIntendedRoute() {
+  if (!hasSessionStorage() || !location.pathname.endsWith('/app.html')) {
+    return;
+  }
+
+  const route = window.location.hash.replace('#', '').trim().toLowerCase();
+  if (route) {
+    sessionStorage.setItem(INTENDED_ROUTE_KEY, route);
+  }
+}
+
+function hasSessionStorage() {
+  return typeof sessionStorage !== 'undefined';
 }

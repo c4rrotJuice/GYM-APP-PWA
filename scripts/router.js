@@ -1,5 +1,5 @@
 import { canAccessRoute, getDefaultRouteForRole, getVisibleRoutes, hasCapability } from './permissions.js';
-import { getCurrentUserRole } from './session.js';
+import { getAppContext } from './app-context.js';
 import { createAdminDashboardView, initAdminDashboardPage } from '../pages/admin/dashboard.js';
 import { createUsersView, initUsersPage } from '../pages/admin/users.js';
 
@@ -66,7 +66,7 @@ const ROUTES = {
   }
 };
 
-export function initRouter({ target, navItems, session, supabaseReady }) {
+export function initRouter({ target, navItems, appContext, supabaseReady }) {
   if (!target) {
     return;
   }
@@ -76,8 +76,10 @@ export function initRouter({ target, navItems, session, supabaseReady }) {
   const renderRoute = async () => {
     const requestId = ++renderRequestId;
     const routeName = normalizeRoute(window.location.hash);
-    const route = ROUTES[routeName] || ROUTES.dashboard;
-    const role = await getCurrentUserRole({ session, forceRefresh: true });
+    const hydratedContext = getAppContext();
+    const context = hydratedContext.isAuthenticated ? hydratedContext : appContext;
+    const role = context?.role || null;
+    const route = ROUTES[routeName];
 
     if (requestId !== renderRequestId) {
       return;
@@ -85,8 +87,13 @@ export function initRouter({ target, navItems, session, supabaseReady }) {
 
     renderNavigation(navItems, role);
 
-    if (!canAccessRoute(role, routeName)) {
-      const fallbackRoute = getDefaultRouteForRole(role);
+    if (!route) {
+      redirectToFallbackRoute(role);
+      return;
+    }
+
+    if (!canAccessRoute(context, routeName)) {
+      const fallbackRoute = getDefaultRouteForRole(context);
       target.innerHTML = createBlockedView(route, role);
 
       if (fallbackRoute && fallbackRoute !== routeName) {
@@ -97,9 +104,14 @@ export function initRouter({ target, navItems, session, supabaseReady }) {
     }
 
     document.title = `${route.title} | Gym PWA`;
-    target.innerHTML = createView(routeName, route, { session, role, supabaseReady });
+    target.innerHTML = createView(routeName, route, {
+      appContext: context,
+      session: context?.session || null,
+      role,
+      supabaseReady
+    });
     target.focus({ preventScroll: true });
-    initializeRoute(target, routeName, { session, role });
+    initializeRoute(target, routeName, { appContext: context, role });
 
     navItems.forEach((item) => {
       const active = item.dataset.route === routeName;
@@ -110,7 +122,7 @@ export function initRouter({ target, navItems, session, supabaseReady }) {
   window.addEventListener('hashchange', renderRoute);
 
   if (!window.location.hash) {
-    window.location.hash = '#dashboard';
+    window.location.hash = `#${getDefaultRouteForRole(appContext) || 'dashboard'}`;
     return;
   }
 
@@ -173,7 +185,7 @@ function createView(routeName, route, state) {
   const scope = getScopeDescription(state.role);
   const tokenReadiness = hasCapability(state.role, 'settings:manage')
     ? 'Tenant settings foundation ready'
-    : 'Tenant scope supplied by Supabase metadata';
+    : 'Tenant scope supplied by the database profile';
 
   return `
     <section class="view-header" aria-labelledby="view-title">
@@ -200,11 +212,11 @@ function createView(routeName, route, state) {
 
 function initializeRoute(target, routeName, state) {
   if (routeName === 'dashboard') {
-    initAdminDashboardPage({ target, role: state.role, session: state.session });
+    initAdminDashboardPage({ target, role: state.role, appContext: state.appContext });
   }
 
   if (routeName === 'members') {
-    initUsersPage({ target, session: state.session, role: state.role });
+    initUsersPage({ target, appContext: state.appContext, role: state.role });
   }
 }
 
@@ -259,7 +271,7 @@ function getDashboardView(role) {
       ['Action', 'Contact admin']
     ],
     items: [
-      ['Assign Admin, Trainer, or Member role in Supabase metadata', 'Required']
+      ['Assign Admin, Trainer, or Member role in the database profile', 'Required']
     ]
   };
 }
@@ -278,4 +290,9 @@ function getScopeDescription(role) {
   }
 
   return 'No role scope has been assigned';
+}
+
+function redirectToFallbackRoute(role) {
+  const fallbackRoute = getDefaultRouteForRole(role) || 'dashboard';
+  window.location.replace(`/app.html#${fallbackRoute}`);
 }
