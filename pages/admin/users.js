@@ -286,7 +286,7 @@ async function handleFormSubmit(event, root, modal, form, state) {
         session: state.appContext?.session,
         role: state.appContext?.role
       });
-      showInlineMessage(message, `User created. Temporary password: ${result.temp_password}`, 'success');
+      showInlineMessage(message, `User created. Default password: ${result.temp_password}`, 'success');
       await loadUsers(root, state, { keepMessage: true });
       setMessage(root, 'User created.', 'success');
       setTimeout(() => closeUserModal(modal), 900);

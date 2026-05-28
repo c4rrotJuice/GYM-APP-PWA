@@ -3,73 +3,78 @@ const ALLOWED_ACCOUNT_STATUSES = new Set(['active', 'suspended', 'disabled']);
 const USER_PROFILE_COLUMNS = 'id, gym_id, fullname, email, phone, role, assigned_trainer, account_status, created_at, updated_at';
 
 export async function handler(event) {
-  if (event.httpMethod !== 'POST') {
-    return jsonResponse(405, { error: 'Method not allowed.' });
-  }
-
-  const env = getEnvironment();
-  if (!env.ok) {
-    return jsonResponse(500, { error: env.error });
-  }
-
-  const accessToken = readBearerToken(event.headers || {});
-  if (!accessToken) {
-    return jsonResponse(401, { error: 'Missing access token.' });
-  }
-
-  const currentUser = await getAuthenticatedUser(env.value, accessToken);
-  if (currentUser.error || !currentUser.user) {
-    return jsonResponse(401, { error: currentUser.error || 'Unable to verify session.' });
-  }
-
-  const currentProfile = await getAdminProfile(env.value, currentUser.user.id);
-  if (currentProfile.error || !currentProfile.profile) {
-    return jsonResponse(403, { error: currentProfile.error || 'Admin profile not found.' });
-  }
-
-  if (
-    currentProfile.profile.role !== 'admin' ||
-    normalizeStatus(currentProfile.profile.account_status) !== 'active' ||
-    !currentProfile.profile.gym_id
-  ) {
-    return jsonResponse(403, { error: 'Only active admins can create users.' });
-  }
-
-  const payload = parsePayload(event.body);
-  if (payload.error) {
-    return jsonResponse(400, { error: payload.error });
-  }
-
-  if (payload.value.assigned_trainer) {
-    const trainerCheck = await validateAssignedTrainer(
-      env.value,
-      payload.value.assigned_trainer,
-      currentProfile.profile.gym_id
-    );
-    if (trainerCheck.error) {
-      return jsonResponse(400, { error: trainerCheck.error });
+  try {
+    if (event.httpMethod !== 'POST') {
+      return jsonResponse(405, { error: 'Method not allowed.' });
     }
+
+    const env = getEnvironment();
+    if (!env.ok) {
+      return jsonResponse(500, { error: env.error });
+    }
+
+    const accessToken = readBearerToken(event.headers || {});
+    if (!accessToken) {
+      return jsonResponse(401, { error: 'Missing access token.' });
+    }
+
+    const currentUser = await getAuthenticatedUser(env.value, accessToken);
+    if (currentUser.error || !currentUser.user) {
+      return jsonResponse(401, { error: currentUser.error || 'Unable to verify session.' });
+    }
+
+    const currentProfile = await getAdminProfile(env.value, currentUser.user.id);
+    if (currentProfile.error || !currentProfile.profile) {
+      return jsonResponse(403, { error: currentProfile.error || 'Admin profile not found.' });
+    }
+
+    if (
+      currentProfile.profile.role !== 'admin' ||
+      normalizeStatus(currentProfile.profile.account_status) !== 'active' ||
+      !currentProfile.profile.gym_id
+    ) {
+      return jsonResponse(403, { error: 'Only active admins can create users.' });
+    }
+
+    const payload = parsePayload(event.body);
+    if (payload.error) {
+      return jsonResponse(400, { error: payload.error });
+    }
+
+    if (payload.value.assigned_trainer) {
+      const trainerCheck = await validateAssignedTrainer(
+        env.value,
+        payload.value.assigned_trainer,
+        currentProfile.profile.gym_id
+      );
+      if (trainerCheck.error) {
+        return jsonResponse(400, { error: trainerCheck.error });
+      }
+    }
+
+    payload.value.gym_id = currentProfile.profile.gym_id;
+
+    const temporaryPassword = createDefaultPassword(payload.value.role);
+    const authCreation = await createAuthUser(env.value, payload.value, temporaryPassword);
+    if (authCreation.error || !authCreation.user) {
+      return jsonResponse(400, { error: authCreation.error || 'Unable to create auth user.' });
+    }
+
+    const profileCreation = await createProfile(env.value, authCreation.user.id, payload.value);
+    if (profileCreation.error || !profileCreation.profile) {
+      await deleteAuthUser(env.value, authCreation.user.id);
+      return jsonResponse(400, { error: profileCreation.error || 'Unable to create user profile.' });
+    }
+
+    return jsonResponse(200, {
+      auth_id: authCreation.user.id,
+      profile: profileCreation.profile,
+      temp_password: temporaryPassword
+    });
+  } catch (error) {
+    console.error('Admin user creation failed:', error);
+    return jsonResponse(500, { error: 'Unable to create user right now.' });
   }
-
-  payload.value.gym_id = currentProfile.profile.gym_id;
-
-  const temporaryPassword = createTemporaryPassword();
-  const authCreation = await createAuthUser(env.value, payload.value, temporaryPassword);
-  if (authCreation.error || !authCreation.user) {
-    return jsonResponse(400, { error: authCreation.error || 'Unable to create auth user.' });
-  }
-
-  const profileCreation = await createProfile(env.value, authCreation.user.id, payload.value);
-  if (profileCreation.error || !profileCreation.profile) {
-    await deleteAuthUser(env.value, authCreation.user.id);
-    return jsonResponse(400, { error: profileCreation.error || 'Unable to create user profile.' });
-  }
-
-  return jsonResponse(200, {
-    auth_id: authCreation.user.id,
-    profile: profileCreation.profile,
-    temp_password: temporaryPassword
-  });
 }
 
 function getEnvironment() {
@@ -246,11 +251,11 @@ function parsePayload(body) {
   };
 }
 
-function createTemporaryPassword() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
+function createDefaultPassword(role, date = new Date()) {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
 
-  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
+  return `${role}${month}${year}`;
 }
 
 function serviceHeaders(env) {

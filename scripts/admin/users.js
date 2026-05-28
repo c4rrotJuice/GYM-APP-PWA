@@ -43,7 +43,7 @@ export async function createUserAsAdmin(payload, { session, role } = {}) {
 
   const result = await readJson(response);
   if (!response.ok) {
-    throw new Error(result?.error || 'Unable to create user right now.');
+    throw new Error(result?.error || result?.message || `Unable to create user. Server returned ${response.status}.`);
   }
 
   return result;
@@ -137,8 +137,13 @@ export function normalizeUserStatus(status) {
 
 async function readJson(response) {
   try {
-    return await response.json();
+    return await response.clone().json();
   } catch (error) {
-    return null;
+    try {
+      const text = await response.text();
+      return text ? { message: text } : null;
+    } catch (textError) {
+      return null;
+    }
   }
 }
