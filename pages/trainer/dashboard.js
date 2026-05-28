@@ -1,12 +1,12 @@
 import { loadDashboardBootstrap } from '../../scripts/dashboard-bootstrap.js';
 import {
   createActionList,
-  createCompactList,
   createDashboardSection,
   createDashboardShell,
   createMetricGrid,
-  formatDate
+  createEmptyState
 } from '../../scripts/dashboard-layout.js';
+import { createAssignedMemberCard, createFutureModuleSlots } from '../../scripts/role-components.js';
 
 export function createTrainerDashboardView({ supabaseReady }) {
   return createDashboardShell({
@@ -54,6 +54,7 @@ function renderTrainerDashboard(data) {
     ${createMetricGrid([
       { label: 'Assigned members', value: data.totals.assignedMembers, detail: 'Visible through trainer scope' },
       { label: 'Active members', value: data.totals.activeAssigned, detail: 'Ready for attendance and programs' },
+      { label: 'Recent attendance', value: data.totals.recentAttendance, detail: 'Assigned attendance scope' },
       { label: 'Workout programs', value: data.totals.workoutPrograms, detail: 'Program builder scaffold' }
     ], { label: 'Trainer dashboard metrics' })}
 
@@ -61,15 +62,9 @@ function renderTrainerDashboard(data) {
       ${createDashboardSection({
         title: 'Assigned Member Quick Access',
         description: members.length ? 'Members currently assigned to this trainer.' : 'Assigned members will appear here after admin assignment.',
-        body: createCompactList(members.slice(0, 6).map((member) => ({
-          title: member.fullname || member.email || 'Unnamed member',
-          description: `${member.email || 'No email'} - updated ${formatDate(member.updated_at)}`,
-          badge: member.account_status === 'active' ? 'Active' : 'Review',
-          state: member.account_status === 'active' ? 'active' : 'inactive'
-        })), {
-          emptyTitle: 'No assigned members',
-          emptyDescription: 'Ask an admin to assign member profiles to your trainer account.'
-        })
+        body: members.length
+          ? `<div class="role-card-grid role-card-grid-compact">${members.slice(0, 4).map((member) => createAssignedMemberCard(member)).join('')}</div>`
+          : createEmptyState('No assigned members', 'Ask an admin to assign member profiles to your trainer account.')
       })}
       ${createDashboardSection({
         title: 'Preparation Widgets',
@@ -83,13 +78,9 @@ function renderTrainerDashboard(data) {
     </div>
 
     ${createDashboardSection({
-      title: 'Recent Member Activity',
-      description: 'Activity cards are ready for attendance, workout, and progress events once Phase 3 data is enabled.',
-      body: createCompactList([
-        { title: 'Attendance feed', description: 'Recent check-ins will be scoped to assigned members.', badge: 'Future', state: 'future' },
-        { title: 'Workout completion', description: 'Program completion updates will appear here.', badge: 'Future', state: 'future' },
-        { title: 'Progress notes', description: 'Member progress updates will attach to this timeline.', badge: 'Future', state: 'future' }
-      ])
+      title: 'Future Module Slots',
+      description: 'Stable insertion points for attendance, workouts, progress, memberships, and notifications.',
+      body: createFutureModuleSlots()
     })}
   `;
 }

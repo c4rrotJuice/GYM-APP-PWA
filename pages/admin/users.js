@@ -21,29 +21,6 @@ const ROLE_LABELS = Object.freeze({
 const SEARCH_DEBOUNCE_MS = 260;
 
 export function createUsersView({ role }) {
-  if (role === 'trainer') {
-    return `
-      <section class="view-header" aria-labelledby="assigned-members-title">
-        <p class="eyebrow">Trainer</p>
-        <h1 id="assigned-members-title">Assigned Members</h1>
-        <p>Read-only member directory scoped to profiles assigned to your trainer account.</p>
-      </section>
-
-      <section class="panel user-admin-panel" aria-labelledby="trainer-member-list-title" data-trainer-member-directory>
-        <div class="user-admin-toolbar">
-          <div>
-            <h2 id="trainer-member-list-title">Member Quick Access</h2>
-            <p data-user-count>Loading assigned members...</p>
-          </div>
-        </div>
-        <div class="auth-message" data-user-message role="status" aria-live="polite"></div>
-        <div class="user-card-grid" data-user-list aria-busy="true">
-          ${renderSkeletonCards()}
-        </div>
-      </section>
-    `;
-  }
-
   if (role !== 'admin') {
     return `
       <section class="panel" aria-labelledby="users-readonly-title">
@@ -162,11 +139,6 @@ export function createUsersView({ role }) {
 }
 
 export async function initUsersPage({ target, role, appContext }) {
-  if (role === 'trainer') {
-    await initTrainerMembersPage({ target, appContext });
-    return;
-  }
-
   const root = target?.querySelector('[data-user-admin]');
   const modal = target?.querySelector('[data-user-modal]');
   const form = target?.querySelector('[data-user-form]');
@@ -200,73 +172,6 @@ export async function initUsersPage({ target, role, appContext }) {
   form.querySelector('[data-user-role]')?.addEventListener('change', () => syncTrainerField(form));
 
   await loadUsers(root, state);
-}
-
-async function initTrainerMembersPage({ target, appContext }) {
-  const root = target?.querySelector('[data-trainer-member-directory]');
-
-  if (!root) {
-    return;
-  }
-
-  setListBusy(root, true);
-  setMessage(root, 'Loading assigned members...', '');
-
-  const { users, error } = await listUsers({ appContext, role: 'member' });
-
-  if (error) {
-    renderTrainerMembers(root, []);
-    setMessage(root, error.message || 'Unable to load assigned members.', 'error');
-    setListBusy(root, false);
-    return;
-  }
-
-  renderTrainerMembers(root, users || []);
-  clearMessage(root);
-  setListBusy(root, false);
-}
-
-function renderTrainerMembers(root, users) {
-  const list = root.querySelector('[data-user-list]');
-  const count = root.querySelector('[data-user-count]');
-
-  count.textContent = `${users.length} assigned ${users.length === 1 ? 'member' : 'members'}`;
-
-  if (!users.length) {
-    list.innerHTML = `
-      <article class="empty-state">
-        <strong>No assigned members</strong>
-        <span>Ask an admin to assign member profiles to your trainer account.</span>
-      </article>
-    `;
-    return;
-  }
-
-  list.innerHTML = users.map((user) => renderTrainerMemberCard(user)).join('');
-}
-
-function renderTrainerMemberCard(user) {
-  const status = normalizeKnownStatus(user.account_status);
-
-  return `
-    <article class="user-card" data-user-card="${escapeHtml(user.id)}">
-      <div class="user-card-main">
-        <div>
-          <h3>${escapeHtml(user.fullname || 'Unnamed member')}</h3>
-          <p>${escapeHtml(user.email || 'No email')}</p>
-        </div>
-        <span class="status-pill" data-state="${statusState(status)}">${escapeHtml(USER_STATUS_LABELS[status] || status)}</span>
-      </div>
-      <div class="user-card-meta">
-        <span><strong>Phone</strong>${escapeHtml(user.phone || 'Not set')}</span>
-        <span><strong>Updated</strong>${escapeHtml(formatDate(user.updated_at))}</span>
-      </div>
-      <div class="membership-strip">
-        <span class="status-pill" data-state="future">Activity pending</span>
-        <span>Attendance, workout, and progress signals attach in Phase 3.</span>
-      </div>
-    </article>
-  `;
 }
 
 async function loadUsers(root, state, { keepMessage = false } = {}) {

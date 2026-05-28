@@ -5,6 +5,7 @@ import { ROUTE_DEFINITIONS, createTopSubNavigation, renderBottomNavigation } fro
 import { createAdminDashboardView, initAdminDashboardPage } from '../pages/admin/dashboard.js';
 import { createUsersView, initUsersPage } from '../pages/admin/users.js';
 import { createTrainerDashboardView, initTrainerDashboardPage } from '../pages/trainer/dashboard.js';
+import { createTrainerMembersView, initTrainerMembersPage } from '../pages/trainer/members.js';
 import { createMemberDashboardView, initMemberDashboardPage } from '../pages/member/dashboard.js';
 import { createModulePlaceholderView, initModulePlaceholderPage } from '../pages/common/module-placeholder.js';
 
@@ -26,7 +27,13 @@ const DASHBOARD_PAGES = Object.freeze({
 const PAGE_REGISTRY = Object.freeze({
   members: {
     render: createUsersView,
-    init: initUsersPage
+    init: initUsersPage,
+    roles: {
+      trainer: {
+        render: createTrainerMembersView,
+        init: initTrainerMembersPage
+      }
+    }
   },
   attendance: {
     render: createModulePlaceholderView,
@@ -133,7 +140,8 @@ function resolvePage(routeName, role) {
     return DASHBOARD_PAGES[role] || null;
   }
 
-  return PAGE_REGISTRY[routeName] || null;
+  const page = PAGE_REGISTRY[routeName] || null;
+  return page?.roles?.[role] || page;
 }
 
 function normalizeRoute(hash) {
