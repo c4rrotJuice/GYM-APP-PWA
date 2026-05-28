@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gym-pwa-shell-v15';
+const CACHE_VERSION = 'gym-pwa-shell-v16';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
@@ -20,18 +20,26 @@ const APP_SHELL = [
   '/scripts/app.js',
   '/scripts/auth.js',
   '/scripts/admin/users.js',
+  '/scripts/dashboard-bootstrap.js',
+  '/scripts/dashboard-layout.js',
+  '/scripts/dashboard-queries.js',
+  '/scripts/dashboard-state.js',
   '/scripts/env.js',
   '/scripts/guards.js',
   '/scripts/install.js',
   '/scripts/memberships.js',
   '/scripts/permissions.js',
   '/scripts/profiles.js',
+  '/scripts/navigation.js',
   '/scripts/router.js',
   '/scripts/session.js',
   '/scripts/supabase.js',
   '/pages/admin/dashboard.js',
   '/pages/admin/members.js',
-  '/pages/admin/users.js'
+  '/pages/admin/users.js',
+  '/pages/common/module-placeholder.js',
+  '/pages/member/dashboard.js',
+  '/pages/trainer/dashboard.js'
 ];
 const STATIC_EXTENSIONS = [
   '.css',

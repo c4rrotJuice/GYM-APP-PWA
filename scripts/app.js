@@ -10,7 +10,7 @@ initInstallPrompt();
 syncStandaloneState();
 watchConnectionStatus();
 
-const routeName = window.location.hash.replace('#', '').trim().toLowerCase() || 'dashboard';
+const routeName = normalizeRoute(window.location.hash);
 const authState = await bootstrapAuthenticatedRoute({ routeName });
 const appView = document.querySelector('#app-view');
 
@@ -27,4 +27,9 @@ if (!authState.allowed) {
     appContext: authState.appContext,
     supabaseReady: Boolean(supabase)
   });
+}
+
+function normalizeRoute(hash) {
+  const route = hash.replace('#', '').trim().toLowerCase() || 'dashboard';
+  return route === 'users' ? 'members' : route;
 }

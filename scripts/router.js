@@ -1,70 +1,46 @@
-import { canAccessRoute, getDefaultRouteForRole, getVisibleRoutes, hasCapability } from './permissions.js';
+import { canAccessRoute, getDefaultRouteForRole } from './permissions.js';
 import { getAppContext } from './app-context.js';
+import { getRememberedRoute, rememberNavigationState } from './dashboard-state.js';
+import { ROUTE_DEFINITIONS, createTopSubNavigation, renderBottomNavigation } from './navigation.js';
 import { createAdminDashboardView, initAdminDashboardPage } from '../pages/admin/dashboard.js';
 import { createUsersView, initUsersPage } from '../pages/admin/users.js';
+import { createTrainerDashboardView, initTrainerDashboardPage } from '../pages/trainer/dashboard.js';
+import { createMemberDashboardView, initMemberDashboardPage } from '../pages/member/dashboard.js';
+import { createModulePlaceholderView, initModulePlaceholderPage } from '../pages/common/module-placeholder.js';
 
-const ROUTES = {
-  dashboard: {
-    title: 'Dashboard',
-    description: 'Operational overview for attendance, memberships, and gym activity.'
+const DASHBOARD_PAGES = Object.freeze({
+  admin: {
+    render: createAdminDashboardView,
+    init: initAdminDashboardPage
   },
+  trainer: {
+    render: createTrainerDashboardView,
+    init: initTrainerDashboardPage
+  },
+  member: {
+    render: createMemberDashboardView,
+    init: initMemberDashboardPage
+  }
+});
+
+const PAGE_REGISTRY = Object.freeze({
   members: {
-    title: 'Users',
-    description: 'Admin tools for user creation, profile edits, role management, trainer assignment, and account status.',
-    metrics: [
-      ['User records', 'Live'],
-      ['Trainer assignment', 'Ready'],
-      ['RLS policies', 'Supabase']
-    ],
-    items: [
-      ['List all public user profiles', 'Admin'],
-      ['Disable inactive accounts', 'Ready'],
-      ['Review assigned trainer access', 'Ready']
-    ]
+    render: createUsersView,
+    init: initUsersPage
   },
   attendance: {
-    title: 'Attendance',
-    description: 'Shell for future dynamic QR generation, scanning, validation, and logs.',
-    metrics: [
-      ['QR validity', '7/14/30d'],
-      ['Scan queue', 'Future'],
-      ['Logs table', 'Ready']
-    ],
-    items: [
-      ['Generate attendance token', 'Admin'],
-      ['Scan token from installed PWA', 'Member'],
-      ['Validate membership and expiry', 'Supabase']
-    ]
+    render: createModulePlaceholderView,
+    init: initModulePlaceholderPage
   },
   workouts: {
-    title: 'Workouts',
-    description: 'Trainer and member area for assigned programs and progress tracking.',
-    metrics: [
-      ['Programs', 'Ready'],
-      ['Progress logs', 'Ready'],
-      ['Photos', 'Future']
-    ],
-    items: [
-      ['Assign workout plans', 'Trainer'],
-      ['Track completion', 'Member'],
-      ['Record measurements and notes', 'Future']
-    ]
+    render: createModulePlaceholderView,
+    init: initModulePlaceholderPage
   },
   settings: {
-    title: 'Settings',
-    description: 'Configuration area for Supabase, tenant settings, roles, and PWA preferences.',
-    metrics: [
-      ['Supabase client', 'Pending'],
-      ['Install mode', 'Enabled'],
-      ['Push', 'Future']
-    ],
-    items: [
-      ['Add Supabase URL and anon key', 'Config'],
-      ['Enable role-based access control', 'RLS'],
-      ['Prepare gym tenant branding', 'SaaS']
-    ]
+    render: createModulePlaceholderView,
+    init: initModulePlaceholderPage
   }
-};
+});
 
 export function initRouter({ target, navItems, appContext, supabaseReady }) {
   if (!target) {
@@ -76,16 +52,15 @@ export function initRouter({ target, navItems, appContext, supabaseReady }) {
   const renderRoute = async () => {
     const requestId = ++renderRequestId;
     const routeName = normalizeRoute(window.location.hash);
-    const hydratedContext = getAppContext();
-    const context = hydratedContext.isAuthenticated ? hydratedContext : appContext;
+    const context = getActiveContext(appContext);
     const role = context?.role || null;
-    const route = ROUTES[routeName];
+    const route = ROUTE_DEFINITIONS[routeName];
 
     if (requestId !== renderRequestId) {
       return;
     }
 
-    renderNavigation(navItems, role);
+    renderBottomNavigation(navItems, role);
 
     if (!route) {
       redirectToFallbackRoute(role);
@@ -93,40 +68,72 @@ export function initRouter({ target, navItems, appContext, supabaseReady }) {
     }
 
     if (!canAccessRoute(context, routeName)) {
-      const fallbackRoute = getDefaultRouteForRole(context);
-      target.innerHTML = createBlockedView(route, role);
-
-      if (fallbackRoute && fallbackRoute !== routeName) {
-        window.location.replace(`/app.html#${fallbackRoute}`);
-      }
-
+      renderBlockedRoute({ target, route, routeName, role, context });
       return;
     }
 
+    rememberNavigationState({ role, routeName });
     document.title = `${route.title} | Gym PWA`;
-    target.innerHTML = createView(routeName, route, {
+    target.setAttribute('aria-busy', 'true');
+    target.innerHTML = createPageView(routeName, {
       appContext: context,
-      session: context?.session || null,
       role,
+      routeName,
+      route,
       supabaseReady
     });
     target.focus({ preventScroll: true });
-    initializeRoute(target, routeName, { appContext: context, role });
 
-    navItems.forEach((item) => {
-      const active = item.dataset.route === routeName;
-      item.setAttribute('aria-current', active ? 'page' : 'false');
+    await initializeRoute(target, routeName, {
+      appContext: context,
+      role,
+      routeName,
+      route,
+      supabaseReady
     });
+
+    target.setAttribute('aria-busy', 'false');
+    syncActiveNavigation(navItems, routeName);
   };
 
   window.addEventListener('hashchange', renderRoute);
 
   if (!window.location.hash) {
-    window.location.hash = `#${getDefaultRouteForRole(appContext) || 'dashboard'}`;
+    const rememberedRoute = getRememberedRoute(appContext?.role);
+    const route = rememberedRoute && canAccessRoute(appContext, rememberedRoute)
+      ? rememberedRoute
+      : getDefaultRouteForRole(appContext) || 'dashboard';
+    window.location.hash = `#${route}`;
     return;
   }
 
   renderRoute();
+}
+
+function createPageView(routeName, state) {
+  const page = resolvePage(routeName, state.role);
+
+  if (!page) {
+    return createBlockedView(state.route, state.role);
+  }
+
+  return `
+    ${createTopSubNavigation({ role: state.role, activeRoute: routeName })}
+    ${page.render(state)}
+  `;
+}
+
+async function initializeRoute(target, routeName, state) {
+  const page = resolvePage(routeName, state.role);
+  await page?.init?.({ target, ...state });
+}
+
+function resolvePage(routeName, role) {
+  if (routeName === 'dashboard') {
+    return DASHBOARD_PAGES[role] || null;
+  }
+
+  return PAGE_REGISTRY[routeName] || null;
 }
 
 function normalizeRoute(hash) {
@@ -134,90 +141,17 @@ function normalizeRoute(hash) {
   return route === 'users' ? 'members' : route;
 }
 
-function renderNavigation(navItems, role) {
-  const visibleRoutes = getVisibleRoutes(role).map((route) => route.name);
-
-  navItems.forEach((item) => {
-    const visible = visibleRoutes.includes(item.dataset.route);
-    item.hidden = !visible;
-  });
-
-  const nav = navItems[0]?.parentElement;
-  if (nav) {
-    nav.style.setProperty('--nav-count', String(Math.max(visibleRoutes.length, 1)));
-  }
+function getActiveContext(initialContext) {
+  const hydratedContext = getAppContext();
+  return hydratedContext.isAuthenticated ? hydratedContext : initialContext;
 }
 
-function createView(routeName, route, state) {
-  if (routeName === 'dashboard' && state.role === 'admin') {
-    return createAdminDashboardView(state);
-  }
+function renderBlockedRoute({ target, route, routeName, role, context }) {
+  const fallbackRoute = getDefaultRouteForRole(context);
+  target.innerHTML = createBlockedView(route, role);
 
-  if (routeName === 'members') {
-    return createUsersView(state);
-  }
-
-  const view = routeName === 'dashboard'
-    ? getDashboardView(state.role)
-    : route;
-
-  const metrics = view.metrics.map(([label, value]) => `
-    <article class="metric-card">
-      <span>${label}</span>
-      <strong>${value}</strong>
-    </article>
-  `).join('');
-
-  const items = view.items.map(([label, status]) => `
-    <li>
-      <span>${label}</span>
-      <span class="status-pill">${status}</span>
-    </li>
-  `).join('');
-
-  const authStatus = state.session
-    ? `Supabase session found${state.role ? ` for ${state.role}` : ''}`
-    : 'No Supabase session yet';
-
-  const supabaseStatus = state.supabaseReady
-    ? 'Supabase client available'
-    : 'Supabase config pending';
-
-  const scope = getScopeDescription(state.role);
-  const tokenReadiness = hasCapability(state.role, 'settings:manage')
-    ? 'Tenant settings foundation ready'
-    : 'Tenant scope supplied by the database profile';
-
-  return `
-    <section class="view-header" aria-labelledby="view-title">
-      <p class="eyebrow">${supabaseStatus}</p>
-      <h1 id="view-title">${view.title}</h1>
-      <p>${view.description}</p>
-    </section>
-
-    <section class="metrics-grid" aria-label="${view.title} metrics">
-      ${metrics}
-    </section>
-
-    <section class="panel" aria-labelledby="next-title">
-      <div>
-        <h2 id="next-title">Module readiness</h2>
-        <p>${authStatus}. ${scope}. ${tokenReadiness}.</p>
-      </div>
-      <ul class="list">
-        ${items}
-      </ul>
-    </section>
-  `;
-}
-
-function initializeRoute(target, routeName, state) {
-  if (routeName === 'dashboard') {
-    initAdminDashboardPage({ target, role: state.role, appContext: state.appContext });
-  }
-
-  if (routeName === 'members') {
-    initUsersPage({ target, appContext: state.appContext, role: state.role });
+  if (fallbackRoute && fallbackRoute !== routeName) {
+    window.location.replace(`/app.html#${fallbackRoute}`);
   }
 }
 
@@ -225,72 +159,17 @@ function createBlockedView(route, role) {
   return `
     <section class="view-header" aria-labelledby="view-title">
       <p class="eyebrow">Access restricted</p>
-      <h1 id="view-title">${route.title}</h1>
-      <p>Your current role${role ? ` (${role})` : ''} is not allowed to view this section. Role mapping is ready for Supabase policy expansion.</p>
+      <h1 id="view-title">${route?.title || 'Restricted'}</h1>
+      <p>Your current role${role ? ` (${role})` : ''} is not allowed to view this section.</p>
     </section>
   `;
 }
 
-function getDashboardView(role) {
-  const dashboards = {
-    trainer: {
-      title: 'Trainer Dashboard',
-      description: 'Assigned-member workspace for attendance follow-up, workout assignment, and progress review.',
-      metrics: [
-        ['Access scope', 'Assigned'],
-        ['Member visibility', 'Assigned'],
-        ['Settings', 'Restricted']
-      ],
-      items: [
-        ['View assigned member list only', 'Trainer'],
-        ['Monitor assigned attendance and workouts', 'Trainer'],
-        ['Record progress notes in future phases', 'Trainer']
-      ]
-    },
-    member: {
-      title: 'Member Dashboard',
-      description: 'Personal gym workspace for membership status, QR attendance scanning, workouts, and progress.',
-      metrics: [
-        ['Access scope', 'Own'],
-        ['Profile visibility', 'Own'],
-        ['Settings', 'Restricted']
-      ],
-      items: [
-        ['Scan active gym attendance QR', 'Member'],
-        ['View assigned workouts', 'Member'],
-        ['Track personal progress in future phases', 'Member']
-      ]
-    }
-  };
-
-  return dashboards[role] || {
-    title: 'Dashboard',
-    description: 'Your account does not have an assigned role yet. Contact your gym administrator.',
-    metrics: [
-      ['Role', 'Missing'],
-      ['Access', 'Blocked'],
-      ['Action', 'Contact admin']
-    ],
-    items: [
-      ['Assign Admin, Trainer, or Member role in the database profile', 'Required']
-    ]
-  };
-}
-
-function getScopeDescription(role) {
-  if (role === 'admin') {
-    return 'Admin access is designed for full tenant operations';
-  }
-
-  if (role === 'trainer') {
-    return 'Trainer access is designed for assigned members only';
-  }
-
-  if (role === 'member') {
-    return 'Member access is designed for the signed-in profile only';
-  }
-
-  return 'No role scope has been assigned';
+function syncActiveNavigation(navItems, routeName) {
+  navItems.forEach((item) => {
+    const active = item.dataset.route === routeName;
+    item.setAttribute('aria-current', active ? 'page' : 'false');
+  });
 }
 
 function redirectToFallbackRoute(role) {

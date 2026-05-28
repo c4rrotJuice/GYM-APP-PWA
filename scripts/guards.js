@@ -1,9 +1,11 @@
 import {
   clearAppContext,
+  getAppContext,
   hydrateAppContext,
   refreshAppContext,
   setAppContextFromSession
 } from './app-context.js';
+import { clearDashboardBootstrapCache } from './dashboard-bootstrap.js';
 import {
   invalidateCurrentUserRoleCache,
   watchAuthState
@@ -60,7 +62,7 @@ export async function bootstrapAuthenticatedRoute({ routeName = 'dashboard' } = 
   }
 
   const refreshRouteAccess = async ({ forceRefresh = true } = {}) => {
-    const nextRoute = window.location.hash.replace('#', '').trim().toLowerCase() || 'dashboard';
+    const nextRoute = normalizeRoute(window.location.hash);
     const nextContext = await refreshAppContext({ verify: forceRefresh });
     const nextDefaultRoute = getDefaultRouteForRole(nextContext);
 
@@ -77,18 +79,27 @@ export async function bootstrapAuthenticatedRoute({ routeName = 'dashboard' } = 
 
   window.addEventListener('hashchange', () => {
     invalidateCurrentUserRoleCache();
+    const nextRoute = normalizeRoute(window.location.hash);
+    const activeContext = getAppContext();
+
+    if (activeContext.isAuthenticated && canAccessRoute(activeContext, nextRoute)) {
+      return;
+    }
+
     refreshRouteAccess();
   });
 
   watchAuthState(async (event, nextSession) => {
     if (event === 'SIGNED_OUT' || !nextSession) {
       clearAppContext();
+      clearDashboardBootstrapCache();
       rememberIntendedRoute();
       redirectToPublic();
       return;
     }
 
-    await setAppContextFromSession(nextSession);
+    const nextContext = await setAppContextFromSession(nextSession);
+    clearDashboardBootstrapCache(nextContext);
 
     if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
       refreshRouteAccess();
@@ -165,10 +176,15 @@ function rememberIntendedRoute() {
     return;
   }
 
-  const route = window.location.hash.replace('#', '').trim().toLowerCase();
+  const route = normalizeRoute(window.location.hash);
   if (route) {
     sessionStorage.setItem(INTENDED_ROUTE_KEY, route);
   }
+}
+
+function normalizeRoute(hash) {
+  const route = hash.replace('#', '').trim().toLowerCase();
+  return route === 'users' ? 'members' : route;
 }
 
 function hasSessionStorage() {

@@ -1,104 +1,139 @@
-import { countActiveMemberships } from '../../scripts/memberships.js';
-import { listUsers } from '../../scripts/profiles.js';
+import { loadDashboardBootstrap } from '../../scripts/dashboard-bootstrap.js';
+import {
+  createActionList,
+  createCompactList,
+  createDashboardSection,
+  createDashboardShell,
+  createEmptyState,
+  createKeyValueList,
+  createMetricGrid,
+  formatDate
+} from '../../scripts/dashboard-layout.js';
 
-const METRICS = [
-  ['totalUsers', 'Total users'],
-  ['totalMembers', 'Total members'],
-  ['totalTrainers', 'Total trainers'],
-  ['activeMemberships', 'Active memberships']
-];
+export function createAdminDashboardView({ supabaseReady }) {
+  return createDashboardShell({
+    eyebrow: supabaseReady ? 'Supabase live' : 'Supabase unavailable',
+    title: 'Admin Dashboard',
+    description: 'Tenant operations, people, membership readiness, and gym-level health in one workspace.',
+    status: { text: 'Loading dashboard overview...', busy: true },
+    body: `
+      <div data-dashboard-root="admin" aria-busy="true">
+        ${createMetricGrid(getLoadingMetrics(), { label: 'Admin dashboard metrics' })}
+        <div class="dashboard-grid dashboard-grid-wide">
+          ${createDashboardSection({
+            title: 'Quick Actions',
+            description: 'Common operational entry points for this gym.',
+            body: createActionList([
+              { label: 'Create user', description: 'Add an admin, trainer, or member profile.', href: '#members', badge: 'Admin' },
+              { label: 'Assign trainers', description: 'Review member trainer assignment.', href: '#members', badge: 'Ready' },
+              { label: 'Memberships', description: 'Membership lifecycle attaches in Phase 3.', href: '#dashboard', badge: 'Future', state: 'future', disabled: true }
+            ])
+          })}
+          ${createDashboardSection({
+            title: 'Gym Snapshot',
+            description: 'Tenant and profile state for the active session.',
+            body: createEmptyState('Snapshot loading', 'Gym status will appear after the dashboard bootstrap finishes.')
+          })}
+        </div>
+      </div>
+    `
+  });
+}
 
-export function createAdminDashboardView({ role, supabaseReady }) {
-  if (role !== 'admin') {
-    return null;
+export async function initAdminDashboardPage({ target, appContext }) {
+  const root = target?.querySelector('[data-dashboard-root="admin"]');
+  const status = target?.querySelector('.dashboard-status');
+
+  if (!root) {
+    return;
   }
 
-  const cards = METRICS.map(([key, label]) => `
-    <article class="metric-card" data-dashboard-card="${key}">
-      <span>${label}</span>
-      <strong data-dashboard-metric="${key}">...</strong>
-    </article>
-  `).join('');
+  const { data, error } = await loadDashboardBootstrap({ appContext });
+
+  if (error || !data) {
+    setStatus(status, error?.message || 'Unable to load the admin dashboard.', 'error');
+    root.setAttribute('aria-busy', 'false');
+    return;
+  }
+
+  root.innerHTML = renderAdminDashboard(data);
+  root.setAttribute('aria-busy', 'false');
+  setStatus(status, 'Dashboard overview is current.', 'success');
+}
+
+function renderAdminDashboard(data) {
+  const users = data.users || [];
+  const recentUsers = users.slice(0, 5).map((user) => ({
+    title: user.fullname || user.email || 'Unnamed user',
+    description: `${roleLabel(user.role)} - ${user.email || 'No email'} - updated ${formatDate(user.updated_at)}`,
+    badge: statusLabel(user.account_status),
+    state: user.account_status === 'active' ? 'active' : 'inactive'
+  }));
 
   return `
-    <section class="view-header" aria-labelledby="dashboard-title">
-      <p class="eyebrow">${supabaseReady ? 'Supabase live' : 'Supabase unavailable'}</p>
-      <h1 id="dashboard-title">Admin Dashboard</h1>
-      <p>Live user and membership totals from the gym database.</p>
-    </section>
+    ${createMetricGrid([
+      { label: 'Total users', value: data.totals.totalUsers, detail: 'Profiles in this gym' },
+      { label: 'Members', value: data.totals.totalMembers, detail: 'Member accounts' },
+      { label: 'Trainers', value: data.totals.totalTrainers, detail: 'Trainer accounts' },
+      { label: 'Active memberships', value: data.totals.activeMemberships, detail: 'Phase 3 management-ready' }
+    ], { label: 'Admin dashboard metrics' })}
 
-    <section class="metrics-grid" aria-label="Admin dashboard metrics" data-admin-dashboard>
-      ${cards}
-    </section>
+    <div class="dashboard-grid dashboard-grid-wide">
+      ${createDashboardSection({
+        title: 'Quick Actions',
+        description: 'Common operational entry points for this gym.',
+        body: createActionList([
+          { label: 'Create user', description: 'Add an admin, trainer, or member profile.', href: '#members', badge: 'Admin' },
+          { label: 'Manage member access', description: 'Update status, role, and trainer assignment.', href: '#members', badge: 'Ready' },
+          { label: 'Review future reports', description: 'Reports are scaffolded for later analytics.', href: '#dashboard', badge: 'Future', state: 'future', disabled: true }
+        ])
+      })}
+      ${createDashboardSection({
+        title: 'Gym Snapshot',
+        description: 'Active tenant state from the canonical app context.',
+        body: createKeyValueList([
+          ['Gym ID', data.gym.gymId || 'Not assigned'],
+          ['Active users', String(data.gym.activeUsers)],
+          ['Inactive users', String(data.gym.inactiveUsers)],
+          ['Signed in as', data.gym.currentUser]
+        ])
+      })}
+    </div>
 
-    <section class="panel" aria-labelledby="dashboard-status-title">
-      <div>
-        <h2 id="dashboard-status-title">Dashboard status</h2>
-        <p data-dashboard-message role="status" aria-live="polite">Loading dashboard metrics...</p>
-      </div>
-    </section>
+    ${createDashboardSection({
+      title: 'Recent User Statistics',
+      description: users.length ? 'Newest visible profile activity from the user directory.' : 'No visible users are available yet.',
+      body: createCompactList(recentUsers, {
+        emptyTitle: 'No users found',
+        emptyDescription: 'Create profiles from the Users section to populate this view.'
+      })
+    })}
   `;
 }
 
-export async function initAdminDashboardPage({ target, role, appContext }) {
-  const root = target?.querySelector('[data-admin-dashboard]');
-  if (!root || role !== 'admin') {
-    return;
-  }
-
-  const message = target.querySelector('[data-dashboard-message]');
-  setDashboardMessage(message, 'Loading dashboard metrics...', '');
-
-  const [usersResult, membershipsResult] = await Promise.all([
-    listUsers({ appContext }),
-    countActiveMemberships({ appContext })
-  ]);
-
-  if (usersResult.error || membershipsResult.error) {
-    renderDashboardMetrics(root, {
-      totalUsers: null,
-      totalMembers: null,
-      totalTrainers: null,
-      activeMemberships: null
-    });
-
-    setDashboardMessage(
-      message,
-      usersResult.error?.message || membershipsResult.error?.message || 'Unable to load dashboard metrics.',
-      'error'
-    );
-    return;
-  }
-
-  const users = usersResult.users || [];
-  renderDashboardMetrics(root, {
-    totalUsers: users.length,
-    totalMembers: users.filter((user) => user.role === 'member').length,
-    totalTrainers: users.filter((user) => user.role === 'trainer').length,
-    activeMemberships: membershipsResult.count
-  });
-
-  setDashboardMessage(message, 'Dashboard metrics are current.', 'success');
+function getLoadingMetrics() {
+  return [
+    { label: 'Total users', value: '...' },
+    { label: 'Members', value: '...' },
+    { label: 'Trainers', value: '...' },
+    { label: 'Active memberships', value: '...' }
+  ];
 }
 
-function renderDashboardMetrics(root, metrics) {
-  Object.entries(metrics).forEach(([key, value]) => {
-    const target = root.querySelector(`[data-dashboard-metric="${key}"]`);
-    if (target) {
-      target.textContent = Number.isFinite(value) ? String(value) : '--';
-    }
-  });
-}
-
-function setDashboardMessage(target, text, tone) {
+function setStatus(target, text, tone) {
   if (!target) {
     return;
   }
 
   target.textContent = text;
-  if (tone) {
-    target.dataset.tone = tone;
-  } else {
-    delete target.dataset.tone;
-  }
+  target.setAttribute('aria-busy', 'false');
+  target.dataset.tone = tone;
+}
+
+function roleLabel(role) {
+  return role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Unassigned';
+}
+
+function statusLabel(status) {
+  return status === 'active' ? 'Active' : 'Needs review';
 }
