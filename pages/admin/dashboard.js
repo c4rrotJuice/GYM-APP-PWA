@@ -40,7 +40,7 @@ export function createAdminDashboardView({ role, supabaseReady }) {
   `;
 }
 
-export async function initAdminDashboardPage({ target, role }) {
+export async function initAdminDashboardPage({ target, role, session }) {
   const root = target?.querySelector('[data-admin-dashboard]');
   if (!root || role !== 'admin') {
     return;
@@ -50,8 +50,8 @@ export async function initAdminDashboardPage({ target, role }) {
   setDashboardMessage(message, 'Loading dashboard metrics...', '');
 
   const [usersResult, membershipsResult] = await Promise.all([
-    listUsers(),
-    countActiveMemberships()
+    listUsers({ session }),
+    countActiveMemberships({ session })
   ]);
 
   if (usersResult.error || membershipsResult.error) {

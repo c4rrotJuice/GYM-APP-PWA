@@ -200,7 +200,7 @@ function createView(routeName, route, state) {
 
 function initializeRoute(target, routeName, state) {
   if (routeName === 'dashboard') {
-    initAdminDashboardPage({ target, role: state.role });
+    initAdminDashboardPage({ target, role: state.role, session: state.session });
   }
 
   if (routeName === 'members') {

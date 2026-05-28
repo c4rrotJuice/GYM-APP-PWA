@@ -1,8 +1,10 @@
 import { getSupabaseClientReady } from './supabase.js';
 import { normalizeRole } from './permissions.js';
+import { getTenantScopedClient, requireGymId, scopedSelect, scopedUpdate } from './tenant-queries.js';
 
 const PROFILE_COLUMNS = [
   'id',
+  'gym_id',
   'fullname',
   'email',
   'phone',
@@ -17,6 +19,7 @@ const INACTIVE_ACCOUNT_VALUES = ['suspended', 'disabled', 'inactive'];
 const MANAGEABLE_ROLES = new Set(['admin', 'trainer', 'member']);
 const DEFAULT_PROFILE_ROLE = 'member';
 const DEFAULT_FULLNAME = 'New Member';
+const DEFAULT_GYM_SLUG = 'default-gym';
 
 export async function ensureUserProfile(user) {
   const supabase = await getSupabaseClientReady();
@@ -30,10 +33,16 @@ export async function ensureUserProfile(user) {
     return existing;
   }
 
+  const gymId = await getDefaultGymId(supabase);
+  if (!gymId) {
+    return { profile: null, error: new Error('No active gym is available for profile creation.') };
+  }
+
   const { data, error } = await supabase
     .from('users')
     .insert({
       id: user.id,
+      gym_id: gymId,
       fullname: getFullnameFromUser(user),
       email: user.email || '',
       role: DEFAULT_PROFILE_ROLE,
@@ -71,17 +80,18 @@ export async function getCurrentUserProfile(supabase, userId) {
   return fetchUserProfile(supabase, userId);
 }
 
-export async function listUsers({ role } = {}) {
-  const supabase = await getSupabaseClientReady();
+export async function listUsers({ role, session, gymId } = {}) {
+  let supabase = null;
 
-  if (!supabase) {
-    return { users: [], error: new Error('Supabase is not configured for this deployment.') };
+  try {
+    supabase = await getTenantScopedClient();
+    gymId = requireGymId(gymId || session);
+  } catch (error) {
+    return { users: [], error };
   }
 
   const normalizedRole = normalizeRole(role);
-  let query = supabase
-    .from('users')
-    .select(PROFILE_COLUMNS)
+  let query = scopedSelect(supabase, 'users', PROFILE_COLUMNS, { gymId })
     .order('fullname', { ascending: true });
 
   if (normalizedRole) {
@@ -97,10 +107,17 @@ export async function listUsers({ role } = {}) {
   return { users: (data || []).map(normalizeProfile), error: null };
 }
 
-export async function updateUserAssignedTrainer(userId, trainerId) {
-  const supabase = await getSupabaseClientReady();
+export async function updateUserAssignedTrainer(userId, trainerId, { session, gymId } = {}) {
+  let supabase = null;
 
-  if (!supabase || !userId) {
+  try {
+    supabase = await getTenantScopedClient();
+    gymId = requireGymId(gymId || session);
+  } catch (error) {
+    return { profile: null, error };
+  }
+
+  if (!userId) {
     return { profile: null, error: new Error('Missing user context for trainer assignment.') };
   }
 
@@ -123,20 +140,22 @@ export async function updateUserAssignedTrainer(userId, trainerId) {
       return { profile: null, error: trainer.error };
     }
 
-    if (trainer.profile.role !== 'trainer' || isInactiveProfile(trainer.profile)) {
+    if (
+      trainer.profile.role !== 'trainer' ||
+      trainer.profile.gym_id !== gymId ||
+      isInactiveProfile(trainer.profile)
+    ) {
       return {
         profile: null,
-        error: new Error('Assigned trainer must be an active trainer profile.')
+        error: new Error('Assigned trainer must be an active trainer profile in this gym.')
       };
     }
   }
 
-  const { data, error } = await supabase
-    .from('users')
-    .update({
+  const { data, error } = await scopedUpdate(supabase, 'users', {
       assigned_trainer: assignedTrainer,
       updated_at: new Date().toISOString()
-    })
+    }, { gymId })
     .eq('id', userId)
     .select(PROFILE_COLUMNS)
     .single();
@@ -148,10 +167,17 @@ export async function updateUserAssignedTrainer(userId, trainerId) {
   return { profile: normalizeProfile(data), error: null };
 }
 
-export async function deactivateUserProfile(userId) {
-  const supabase = await getSupabaseClientReady();
+export async function deactivateUserProfile(userId, { session, gymId } = {}) {
+  let supabase = null;
 
-  if (!supabase || !userId) {
+  try {
+    supabase = await getTenantScopedClient();
+    gymId = requireGymId(gymId || session);
+  } catch (error) {
+    return { profile: null, error };
+  }
+
+  if (!userId) {
     return { profile: null, error: new Error('Missing user context for deactivation.') };
   }
 
@@ -164,12 +190,10 @@ export async function deactivateUserProfile(userId) {
     return { profile: null, error: new Error('This user profile does not have a manageable role.') };
   }
 
-  const { data, error } = await supabase
-    .from('users')
-    .update({
+  const { data, error } = await scopedUpdate(supabase, 'users', {
       account_status: 'disabled',
       updated_at: new Date().toISOString()
-    })
+    }, { gymId })
     .eq('id', userId)
     .select(PROFILE_COLUMNS)
     .single();
@@ -236,9 +260,25 @@ export function isInactiveProfile(profile) {
 function normalizeProfile(profile) {
   return {
     ...profile,
+    gym_id: profile.gym_id || null,
     role: normalizeRole(profile.role),
     account_status: String(profile.account_status || '').toLowerCase()
   };
+}
+
+async function getDefaultGymId(supabase) {
+  const { data, error } = await supabase
+    .from('gyms')
+    .select('id')
+    .eq('slug', DEFAULT_GYM_SLUG)
+    .eq('active', true)
+    .maybeSingle();
+
+  if (error || !data?.id) {
+    return null;
+  }
+
+  return data.id;
 }
 
 function getFullnameFromUser(user) {

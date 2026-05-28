@@ -102,7 +102,7 @@ export async function initUsersPage({ target, role, session }) {
 async function loadUsers(root, state) {
   setMessage(root, 'Loading users...', '');
 
-  const { users, error } = await listUsers();
+  const { users, error } = await listUsers({ session: state.session });
   if (error) {
     state.users = [];
     state.trainers = [];
@@ -258,7 +258,9 @@ async function saveTrainerAssignment(root, state, userId) {
   }
 
   setMessage(root, 'Saving trainer assignment...', '');
-  const { profile, error } = await updateUserAssignedTrainer(userId, select.value);
+  const { profile, error } = await updateUserAssignedTrainer(userId, select.value, {
+    session: state.session
+  });
   if (error) {
     setMessage(root, error.message || 'Unable to update trainer assignment.', 'error');
     return;
@@ -272,7 +274,9 @@ async function saveTrainerAssignment(root, state, userId) {
 
 async function deactivateUser(root, state, userId) {
   setMessage(root, 'Deactivating user...', '');
-  const { profile, error } = await deactivateUserProfile(userId);
+  const { profile, error } = await deactivateUserProfile(userId, {
+    session: state.session
+  });
   if (error) {
     setMessage(root, error.message || 'Unable to deactivate user.', 'error');
     return;

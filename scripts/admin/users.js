@@ -1,5 +1,6 @@
 import { getSupabaseClientReady } from '../supabase.js';
 import { normalizeRole } from '../permissions.js';
+import { requireGymId, scopedSelect } from '../tenant-queries.js';
 
 const ALLOWED_CREATE_ROLES = new Set(['member', 'trainer']);
 
@@ -30,7 +31,7 @@ export async function createUserAsAdmin(payload, { session, role } = {}) {
   return result;
 }
 
-export async function listTrainerOptions({ role } = {}) {
+export async function listTrainerOptions({ role, session, gymId } = {}) {
   if (normalizeRole(role) !== 'admin') {
     return [];
   }
@@ -40,9 +41,9 @@ export async function listTrainerOptions({ role } = {}) {
     throw new Error('Supabase is not configured for this deployment.');
   }
 
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, fullname, email')
+  gymId = requireGymId(gymId || session);
+
+  const { data, error } = await scopedSelect(supabase, 'users', 'id, fullname, email', { gymId })
     .eq('role', 'trainer')
     .eq('account_status', 'active')
     .order('fullname', { ascending: true });

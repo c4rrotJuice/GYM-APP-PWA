@@ -73,7 +73,7 @@ export async function initMembersPage({ target, session, role }) {
   syncTrainerField(roleSelect, trainerField, trainerSelect);
 
   try {
-    const trainers = await listTrainerOptions({ role });
+    const trainers = await listTrainerOptions({ role, session });
     populateTrainerSelect(trainerSelect, trainers);
   } catch (error) {
     showMessage(message, error.message || 'Unable to load trainers.', 'error');

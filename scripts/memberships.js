@@ -1,15 +1,23 @@
 import { getSupabaseClientReady } from './supabase.js';
+import { requireGymId, scopedSelect } from './tenant-queries.js';
 
-export async function countActiveMemberships() {
+export async function countActiveMemberships({ session, gymId } = {}) {
   const supabase = await getSupabaseClientReady();
 
   if (!supabase) {
     return { count: 0, error: new Error('Supabase is not configured for this deployment.') };
   }
 
-  const { count, error } = await supabase
-    .from('memberships')
-    .select('id', { count: 'exact', head: true })
+  try {
+    gymId = requireGymId(gymId || session);
+  } catch (error) {
+    return { count: 0, error };
+  }
+
+  const { count, error } = await scopedSelect(supabase, 'memberships', 'id', {
+    gymId,
+    options: { count: 'exact', head: true }
+  })
     .eq('status', 'active');
 
   if (error) {

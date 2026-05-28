@@ -1,5 +1,5 @@
 const ALLOWED_CREATE_ROLES = new Set(['member', 'trainer']);
-const USER_PROFILE_COLUMNS = 'id, fullname, email, phone, role, assigned_trainer, account_status, created_at, updated_at';
+const USER_PROFILE_COLUMNS = 'id, gym_id, fullname, email, phone, role, assigned_trainer, account_status, created_at, updated_at';
 
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
@@ -26,7 +26,11 @@ export async function handler(event) {
     return jsonResponse(403, { error: currentProfile.error || 'Admin profile not found.' });
   }
 
-  if (currentProfile.profile.role !== 'admin' || currentProfile.profile.account_status !== 'active') {
+  if (
+    currentProfile.profile.role !== 'admin' ||
+    currentProfile.profile.account_status !== 'active' ||
+    !currentProfile.profile.gym_id
+  ) {
     return jsonResponse(403, { error: 'Only active admins can create users.' });
   }
 
@@ -36,11 +40,17 @@ export async function handler(event) {
   }
 
   if (payload.value.assigned_trainer) {
-    const trainerCheck = await validateAssignedTrainer(env.value, payload.value.assigned_trainer);
+    const trainerCheck = await validateAssignedTrainer(
+      env.value,
+      payload.value.assigned_trainer,
+      currentProfile.profile.gym_id
+    );
     if (trainerCheck.error) {
       return jsonResponse(400, { error: trainerCheck.error });
     }
   }
+
+  payload.value.gym_id = currentProfile.profile.gym_id;
 
   const temporaryPassword = createTemporaryPassword();
   const authCreation = await createAuthUser(env.value, payload.value, temporaryPassword);
@@ -104,8 +114,8 @@ async function getAdminProfile(env, userId) {
   return { profile: Array.isArray(result) ? result[0] || null : null, error: null };
 }
 
-async function validateAssignedTrainer(env, trainerId) {
-  const response = await fetch(`${env.url}/rest/v1/users?select=id&id=eq.${encodeURIComponent(trainerId)}&role=eq.trainer&account_status=eq.active`, {
+async function validateAssignedTrainer(env, trainerId, gymId) {
+  const response = await fetch(`${env.url}/rest/v1/users?select=id&id=eq.${encodeURIComponent(trainerId)}&gym_id=eq.${encodeURIComponent(gymId)}&role=eq.trainer&account_status=eq.active`, {
     headers: serviceHeaders(env)
   });
 
@@ -157,6 +167,7 @@ async function createProfile(env, authId, payload) {
     },
     body: JSON.stringify({
       id: authId,
+      gym_id: payload.gym_id,
       fullname: payload.fullname,
       email: payload.email,
       phone: payload.phone,

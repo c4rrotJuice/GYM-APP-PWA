@@ -1,169 +1,490 @@
-Gym PWA — Post-Phase 1 Incremental Development Plan
-Phase 2 — Core Identity + Member System (System Becomes Real)
+Phase 2 — Identity, Roles & Core System Architecture
+Goal
 
-Goal: Users exist properly, roles matter, and the system stops being “empty infrastructure”.
+Transform the app from “authentication exists” into a controlled operational system with secure role-aware behaviour.
 
-Build in this phase
-Supabase Auth fully enforced (email/password sessions stable)
-Role-based routing (Admin / Trainer / Member)
-User profile table fully synced with auth.users
-Member creation flow (admin-only onboarding)
-Basic admin dashboard shell with real data
-Key features
-Create/edit/deactivate members
-Assign trainer to member
-View all users by role
-Protected routes (no role bypass possible)
+This phase is where the application truly becomes a product.
+
+Features To Build
+2.1 User Profile Synchronisation System
+Browser/App Features
+Persistent user sessions
+Auto profile creation after auth signup/login
+Role-aware dashboard redirects
+User status checks
+Actual Internal Actions
+Sync auth.users → public.users
+Create profile if missing
+Prevent duplicate profile creation
+Fetch role during session restore
+Validate account status on every login
+Attach trainer relationship where applicable
+Tables Involved
+users
+Backend Logic
+RLS enforcement
+Role validation middleware
+Session restoration logic
+2.2 Role-Based Access Control (RBAC)
+Browser/App Features
+Admin dashboard
+Trainer dashboard
+Member dashboard
+Protected pages
+Actual Internal Actions
+Route guards
+Role validation before rendering views
+Permission utility helpers
+Query filtering by role
+Security Behaviour
+
+Members:
+
+only own data
+
+Trainers:
+
+assigned members only
+
+Admins:
+
+unrestricted system access
+2.3 Gym/Tenant Foundation (VERY IMPORTANT)
+
+Even though full SaaS comes later, prepare now.
+
+Browser/App Features
+Single-gym mode initially
+Gym branding placeholder config
+Actual Internal Actions
+
+Add:
+
+gyms table
+gym_id to all major tables
+tenant-aware query helpers
+tenant-ready RLS policies
+Why Now
+
+Retrofitting multi-tenancy later becomes painful.
+
+This phase prevents future architecture surgery.
+
+2.4 Admin User Management
+Browser/App Features
+Create members
+Edit members
+Disable accounts
+Assign trainers
+Filter by role/status
+Actual Internal Actions
+Admin creates auth account
+Auto-create profile
+Link trainer IDs
+Soft disable users
+Membership eligibility checks
+2.5 Core Dashboard Framework
+Browser/App Features
+Sidebar navigation
+Dashboard widgets
+Mobile-first navigation
+Quick actions
+Actual Internal Actions
+Dashboard layout system
+State hydration after login
+Role-specific menu generation
+Dashboard bootstrap queries
 Deliverable
 
-A logged-in system where:
+At the end of this phase:
 
-each user lands in the correct dashboard with real persisted identity
+the system has real users,
+real permissions,
+secure data separation,
+and SaaS-safe architecture.
+💳 Phase 3 — Membership & Financial Operations Engine
+Goal
 
-Phase 3 — Membership Engine (Revenue Layer Comes Alive)
+Build the gym’s operational revenue core.
 
-Goal: System starts tracking money and validity like a real gym.
+This phase determines:
 
-Build in this phase
-Membership plan creation (Admin)
-Assign membership to users
-Start/end date automation
-Membership status engine (active / expired / pending)
-Key features
-Expiry detection logic (frontend + backend validation)
-Member dashboard shows:
-plan type
-expiry countdown
-status badge
-Admin view: expiring memberships list
+who is active,
+who can attend,
+who owes money,
+and who is expiring.
+Features To Build
+3.1 Membership Plan System
+Browser/App Features
+Create plans
+Weekly/monthly/custom durations
+Pricing management
+Actual Internal Actions
+Membership duration calculations
+Expiry timestamp automation
+Renewal handling
+Status recalculation jobs
+Tables
+memberships
+3.2 Membership Assignment Workflow
+Browser/App Features
+Assign plans to members
+Renew memberships
+Suspend memberships
+Expiry warnings
+Actual Internal Actions
+Auto-calculate end dates
+Handle overlapping renewals
+Expiry status engine
+Membership history logging
+3.3 Financial Tracking System
+Browser/App Features
+Payment recording
+Payment history
+Revenue overview
+Outstanding balances
+Actual Internal Actions
+Payment reference storage
+Transaction linking
+Renewal-payment linkage
+Revenue aggregation queries
+Tables
+payments
+3.4 Expiry Monitoring Engine
+Browser/App Features
+Expiring soon indicators
+Expired badges
+Renewal prompts
+Actual Internal Actions
+Scheduled expiry checks
+Membership state updates
+Notification trigger preparation
 Deliverable
 
-Gym can now “run subscriptions” digitally instead of manual tracking
+The gym can now:
 
- Phase 4 — QR Attendance System (Core Innovation Layer)
+operate memberships digitally,
+track payments,
+and validate active status reliably.
+📸 Phase 4 — Attendance & QR Validation System
+Goal
 
-Goal: Replace physical attendance books completely.
+Replace manual attendance entirely with a secure validation pipeline.
 
-Build in this phase
-QR token generation system (admin only)
-QR validity modes:
-weekly / fortnight / monthly
-QR display dashboard (large screen mode)
-QR scanning module (mobile PWA)
-Key features
-QR contains:
-gym_id
-token
-expiry
-signature
+This is the operational heartbeat of the product.
+
+Features To Build
+4.1 QR Token Generation Engine
+Browser/App Features
+Generate attendance QR
+Select validity type:
+weekly
+fortnight
+monthly
+Revoke/regenerate QR
+Actual Internal Actions
+Generate signed tokens
+Calculate expiry
+Store token metadata
+Invalidate old tokens
+Tables
+attendance_qr_tokens
+4.2 QR Display Mode
+Browser/App Features
+Fullscreen QR mode
+Gym reception display page
+Auto-refresh countdown
+Actual Internal Actions
+Token refresh timers
+Expiry countdown engine
+Dynamic regeneration handling
+4.3 Mobile QR Scanner
+Browser/App Features
+Camera scanner
+Scan feedback
+Success/failure states
+Scan animation/loading states
+Actual Internal Actions
+
 Validation pipeline:
-membership active check
-token validity check
-expiry check
-Attendance logging to DB
+
+user exists
+active membership exists
+QR token valid
+token active
+token not expired
+user role = member
+
+Then:
+
+create attendance log
+Tables
+attendance_logs
+4.4 Attendance History System
+Browser/App Features
+Recent attendance list
+Attendance streaks
+Today status
+Actual Internal Actions
+Attendance aggregation queries
+Date grouping
+Duplicate attendance prevention
 Deliverable
 
-Members can physically scan and get real-time attendance logged in Supabase
+Attendance becomes:
 
-Phase 5 — Operational Dashboard + Analytics Layer
+fast,
+reliable,
+auditable,
+and operationally useful.
+📊 Phase 5 — Operational Intelligence & Notifications
+Goal
 
-Goal: Turn raw data into decisions.
+Convert operational data into business visibility and retention automation.
 
-Build in this phase
-Admin analytics dashboard
-Attendance heatmaps (simple counts first)
-Membership insights
-Key features
-Active members count
-Daily/weekly attendance stats
-Expiring memberships alerts
-Inactive members detection (no attendance in X days)
+Features To Build
+5.1 Analytics Dashboard
+Browser/App Features
+Active member metrics
+Attendance trends
+Revenue snapshots
+Inactive members
+Actual Internal Actions
+Aggregation queries
+Dashboard caching
+Daily statistics calculations
+5.2 Attendance Intelligence
+Browser/App Features
+Peak attendance times
+Attendance frequency
+Inactivity tracking
+Actual Internal Actions
+Behaviour analysis queries
+Attendance frequency calculations
+Last-seen tracking
+5.3 Notification Infrastructure
+Browser/App Features
+Push permission requests
+Notification settings
+Admin broadcasts
+Actual Internal Actions
+Push subscription storage
+Notification queue architecture
+Trigger service structure
+5.4 Automated Notification Triggers
+Browser/App Features
+Expiry reminders
+Missed attendance alerts
+General announcements
+Actual Internal Actions
+Scheduled notification jobs
+Trigger conditions
+Retry/failure handling
 Deliverable
 
-Gym owner can actually “see the business”
+The app evolves from:
 
-Phase 6 — Trainer System + Workout Engine
+“management system”
 
-Goal: Trainers become functional actors in the system.
+into:
 
-Build in this phase
-Trainer assignment logic
-Workout program creation
+“active operational assistant”.
+
+🏋️ Phase 6 — Trainer & Workout Management System
+Goal
+
+Introduce structured coaching workflows.
+
+Features To Build
+6.1 Trainer Management
+Browser/App Features
+Trainer dashboard
+Assigned member lists
+Member quick access
+Actual Internal Actions
+Trainer-member relationship queries
+Permission filtering
+6.2 Workout Program Builder
+Browser/App Features
+Create workout templates
+Exercise grouping
+Routine editing
+Actual Internal Actions
+Workout storage schema
+Template assignment engine
+Tables
+workout_programs
+6.3 Workout Assignment System
+Browser/App Features
 Assign workouts to members
-Key features
-Trainer dashboard:
-assigned members list
-workout creation
-Member dashboard:
-assigned workouts
-progress view (basic)
+Workout completion tracking
+Actual Internal Actions
+Assignment logging
+Completion state handling
+Tables
+user_workouts
 Deliverable
 
-System now supports coaching workflow, not just admin tracking
+The app now supports:
 
-Phase 7 — Progress Tracking + Member Engagement
+coaching,
+training programs,
+and trainer-member interaction.
+📈 Phase 7 — Progress Tracking & Member Retention
+Goal
 
-Goal: Members start interacting beyond attendance.
+Increase long-term member engagement.
 
-Build in this phase
-Progress logs (weight, notes)
-Photo uploads (Supabase storage)
-Attendance history view
-Key features
-Member progress timeline
-Trainer feedback notes
-Simple before/after tracking structure
+Features To Build
+7.1 Progress Logging
+Browser/App Features
+Weight tracking
+Measurements
+Personal notes
+Actual Internal Actions
+Timeline storage
+Historical aggregation
+Tables
+progress_logs
+7.2 Media Upload System
+Browser/App Features
+Progress photos
+Before/after comparisons
+Actual Internal Actions
+Supabase Storage integration
+Secure media access policies
+Image compression pipeline
+7.3 Trainer Feedback Notes
+Browser/App Features
+Trainer comments
+Improvement observations
+Actual Internal Actions
+Feedback linkage
+Trainer ownership validation
 Deliverable
 
-Gym becomes sticky — members see their evolution
+Members now see:
 
-Phase 8 — Notifications System (Retention Layer)
+visible progress,
+history,
+and personal development.
 
-Goal: Bring users back automatically.
+This dramatically improves retention.
 
-Build in this phase
-Push notification setup (PWA service worker)
-Notification triggers:
-membership expiry
-missed attendance
-workout reminders
-Key features
-Admin broadcast messages
-Automated reminder rules engine
+📡 Phase 8 — Offline Reliability & Sync Engine
+Goal
+
+Ensure the system survives unstable internet conditions gracefully.
+
+Critical for real-world deployment.
+
+Features To Build
+8.1 Offline Attendance Queue
+Browser/App Features
+Offline scan handling
+Pending sync indicators
+Actual Internal Actions
+IndexedDB/local storage queue
+Retry mechanism
+Conflict resolution
+8.2 Smart Cache System
+Browser/App Features
+Faster dashboard loads
+Offline page access
+Actual Internal Actions
+Cache-first strategy
+Dynamic cache invalidation
+Background refresh
+8.3 Sync Recovery Engine
+Browser/App Features
+Sync status UI
+Reconnect handling
+Actual Internal Actions
+Queue replay
+Duplicate prevention
+Failed sync recovery
 Deliverable
 
-System actively drives retention, not passive tracking
+The app becomes:
 
- Phase 9 — Offline Sync + Reliability Layer
+resilient,
+low-maintenance,
+and dependable in imperfect network conditions.
+💰 Phase 9 — Mobile Money & Subscription Automation
+Goal
 
-Goal: Make it resilient in low-connectivity environments (important for Uganda context).
+Integrate real African payment workflows.
 
-Build in this phase
-Offline attendance queue
-Sync when online
-Cache-first improvements
-Failure retry logic
-Key features
-Temporary local storage queue
-Conflict resolution rules
-Sync status indicators
+Features To Build
+9.1 Mobile Money Integration
+Browser/App Features
+MTN MoMo payments
+Airtel Money payments
+Payment confirmations
+Actual Internal Actions
+Payment callbacks/webhooks
+Verification logic
+Duplicate prevention
+9.2 Automated Renewals
+Browser/App Features
+Renewal prompts
+Subscription automation
+Actual Internal Actions
+Auto-renew logic
+Renewal state management
+9.3 Financial Audit Trail
+Browser/App Features
+Transaction logs
+Payment filtering
+Revenue reports
+Actual Internal Actions
+Immutable financial logging
+Audit-safe records
 Deliverable
 
-Even if internet is bad, attendance never breaks
+The platform now handles:
 
- Phase 10 — SaaS Expansion Layer (Multi-Gym Architecture)
+real money,
+renewals,
+and scalable financial operations.
+🏢 Phase 10 — Full SaaS Expansion Layer
+Goal
 
-Goal: Turn this into a sellable product.
+Convert the system into a scalable commercial platform.
 
-Build in this phase
-gyms table (multi-tenancy)
-gym_id isolation across all tables
-branding per gym (logo, name, theme)
-subscription model scaffolding
-Key features
+Features To Build
+10.1 Multi-Gym Management
+Browser/App Features
+Gym switching
 Gym-specific dashboards
-Data isolation via RLS
-SaaS-ready architecture
-Deliverable
+Branding per gym
+Actual Internal Actions
+Tenant isolation enforcement
+Gym-level RLS policies
+Scoped queries
+10.2 White-Label System
+Browser/App Features
+Custom logos
+Theme colours
+Gym branding
+Actual Internal Actions
+Theme configuration storage
+Dynamic asset loading
+10.3 Subscription Billing Platform
+Browser/App Features
+SaaS subscriptions
+Gym billing plans
+Actual Internal Actions
+Tenant billing engine
+Subscription enforcement
+Final Product State
 
-You now have a deployable SaaS product, not just a single gym tool
+At completion, the Gym PWA becomes:
+
+a full operational gym platform,
+installable mobile-first software,
+offline-capable,
+QR attendance enabled,
+financially operational,
+trainer-integrated,
+and SaaS-expandable from the architecture upward.

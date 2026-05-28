@@ -1,6 +1,6 @@
 import { getSupabaseClientReady } from './supabase.js';
 import { getRoleCapabilities, normalizeRole } from './permissions.js';
-import { attachProfileToSession, getCurrentUserProfile } from './profiles.js';
+import { attachProfileToSession, getCurrentUserProfile, isInactiveProfile } from './profiles.js';
 
 const ROLE_CACHE_TTL_MS = 60 * 1000;
 
@@ -52,7 +52,7 @@ export async function restoreSession({ verify = false } = {}) {
     }
 
     const { profile, error: profileError } = await getCurrentUserProfile(supabase, session.user.id);
-    if (profileError || !profile) {
+    if (profileError || !profile || isInactiveProfile(profile) || !profile.gym_id) {
       await clearLocalSupabaseSession(supabase);
       return null;
     }
@@ -89,7 +89,12 @@ export async function watchAuthState(callback) {
     }
 
     const { profile, error } = await getCurrentUserProfile(supabase, session.user.id);
-    callback(event, error || !profile ? null : attachProfileToSession(session, profile));
+    callback(
+      event,
+      error || !profile || isInactiveProfile(profile) || !profile.gym_id
+        ? null
+        : attachProfileToSession(session, profile)
+    );
   });
 
   authSubscription = data.subscription;
@@ -116,7 +121,7 @@ export async function getCurrentUserRole({ forceRefresh = false, session = null,
 
   const { profile, error } = await getCurrentUserProfile(client, userId);
 
-  if (error || !profile) {
+  if (error || !profile || isInactiveProfile(profile) || !profile.gym_id) {
     invalidateCurrentUserRoleCache();
     return null;
   }
@@ -136,25 +141,22 @@ export function invalidateCurrentUserRoleCache() {
 }
 
 export function getTenantId(session) {
-  return (
-    session?.user?.profile?.tenant_id ||
-    session?.user?.profile?.gym_id ||
-    session?.user?.app_metadata?.tenant_id ||
-    session?.user?.app_metadata?.gym_id ||
-    session?.user?.user_metadata?.tenant_id ||
-    session?.user?.user_metadata?.gym_id ||
-    null
-  );
+  return session?.user?.profile?.gym_id || null;
 }
 
 export async function getSessionContext(session) {
-  const role = await getCurrentUserRole({ session });
+  const profile = session?.user?.profile || null;
+  const role = normalizeRole(profile?.role) || await getCurrentUserRole({ session });
+  const gymId = getTenantId(session);
 
   return {
     session,
     user: session?.user || null,
+    profile,
     role,
-    tenantId: getTenantId(session),
+    gymId,
+    tenantId: gymId,
+    status: profile?.account_status || null,
     capabilities: getRoleCapabilities(role)
   };
 }
