@@ -73,7 +73,9 @@ export async function handler(event) {
     });
   } catch (error) {
     console.error('Admin user creation failed:', error);
-    return jsonResponse(500, { error: 'Unable to create user right now.' });
+    return jsonResponse(500, {
+      error: error?.message || 'Unable to create user right now.'
+    });
   }
 }
 
@@ -148,10 +150,17 @@ async function createAuthUser(env, payload, temporaryPassword) {
       email: payload.email,
       password: temporaryPassword,
       email_confirm: true,
+      app_metadata: {
+        role: payload.role,
+        gym_id: payload.gym_id
+      },
       user_metadata: {
         fullname: payload.fullname,
+        full_name: payload.fullname,
         phone: payload.phone || null,
         role: payload.role,
+        account_status: payload.account_status,
+        assigned_trainer: payload.assigned_trainer,
         gym_id: payload.gym_id
       }
     })
@@ -166,12 +175,12 @@ async function createAuthUser(env, payload, temporaryPassword) {
 }
 
 async function createProfile(env, authId, payload) {
-  const response = await fetch(`${env.url}/rest/v1/users`, {
+  const response = await fetch(`${env.url}/rest/v1/users?on_conflict=id`, {
     method: 'POST',
     headers: {
       ...serviceHeaders(env),
       'Content-Type': 'application/json',
-      Prefer: 'return=representation'
+      Prefer: 'resolution=merge-duplicates,return=representation'
     },
     body: JSON.stringify({
       id: authId,
@@ -285,9 +294,14 @@ function readBearerToken(headers) {
 
 async function readJson(response) {
   try {
-    return await response.json();
+    return await response.clone().json();
   } catch (error) {
-    return null;
+    try {
+      const text = await response.text();
+      return text ? { message: text } : null;
+    } catch (textError) {
+      return null;
+    }
   }
 }
 
