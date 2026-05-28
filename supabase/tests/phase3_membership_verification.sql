@@ -76,6 +76,7 @@ values
 select pg_temp.expect_eq('weekly end date calculation', app.calculate_membership_end_date('2026-05-29', 'weekly', 7)::text, '2026-06-05');
 select pg_temp.expect_eq('expired status resolver', app.resolve_membership_status('active', '2026-05-01', '2026-05-28', '2026-05-29')::text, 'expired');
 select pg_temp.expect_eq('suspended status resolver', app.resolve_membership_status('suspended', '2026-05-01', '2026-06-01', '2026-05-29')::text, 'suspended');
+select pg_temp.expect_eq('pending status transitions when started', app.resolve_membership_status('pending', '2026-05-01', '2026-06-01', '2026-05-29')::text, 'active');
 
 reset role;
 select set_config('request.jwt.claim.sub', '21000000-0000-0000-0000-000000000001', true);
@@ -91,6 +92,14 @@ select pg_temp.expect_eq('renewal count increments', (select renewal_count::text
 select app.renew_membership_from_plan('21000000-0000-0000-0000-000000000003', '31000000-0000-0000-0000-000000000001', null, '2026-07-01');
 select pg_temp.expect_count('post-expiry renewal creates a new row', (select count(*)::bigint from public.memberships where user_id = '21000000-0000-0000-0000-000000000003'), 2);
 select pg_temp.expect_count('stale active row is expired before post-expiry renewal', (select count(*)::bigint from public.memberships where user_id = '21000000-0000-0000-0000-000000000003' and status = 'expired'), 1);
+select pg_temp.expect_count('post-expiry renewal links previous row', (
+  select count(*)::bigint
+  from public.memberships renewed
+  join public.memberships previous on previous.id = renewed.renewed_from_membership_id
+  where renewed.user_id = '21000000-0000-0000-0000-000000000003'
+    and renewed.status = 'active'
+    and previous.status = 'expired'
+), 1);
 
 reset role;
 select set_config('request.jwt.claim.sub', '21000000-0000-0000-0000-000000000002', true);

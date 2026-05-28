@@ -65,7 +65,7 @@ export function resolveMembershipStatus(membership, { asOf = new Date() } = {}) 
     return MEMBERSHIP_STATUSES.EXPIRED;
   }
 
-  if (startDate > comparisonDate || storedStatus === MEMBERSHIP_STATUSES.PENDING) {
+  if (startDate > comparisonDate) {
     return MEMBERSHIP_STATUSES.PENDING;
   }
 

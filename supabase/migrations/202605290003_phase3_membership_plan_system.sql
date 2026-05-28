@@ -13,7 +13,12 @@ create table if not exists public.membership_plans (
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (gym_id, name)
+  unique (gym_id, name),
+  constraint membership_plans_duration_matches_type check (
+    (duration_type = 'weekly' and duration_days = 7)
+    or (duration_type = 'monthly' and duration_days = 30)
+    or (duration_type = 'custom' and duration_days > 0)
+  )
 );
 
 alter table public.memberships add column if not exists membership_plan_id uuid references public.membership_plans(id) on delete restrict;
@@ -85,6 +90,12 @@ begin
     raise exception 'unsupported membership duration type';
   end if;
 
+  if duration_type = 'weekly' then
+    duration_days := 7;
+  elsif duration_type = 'monthly' then
+    duration_days := 30;
+  end if;
+
   if duration_days is null or duration_days <= 0 then
     raise exception 'membership duration_days must be positive';
   end if;
@@ -104,7 +115,7 @@ language sql
 stable
 as $$
   select case
-    when stored_status in ('cancelled', 'suspended', 'pending') then stored_status
+    when stored_status in ('cancelled', 'suspended') then stored_status
     when end_on < as_of then 'expired'::public.membership_status
     when start_on > as_of then 'pending'::public.membership_status
     else 'active'::public.membership_status
@@ -267,6 +278,16 @@ begin
     where id = current_membership.id
     returning * into result;
   else
+    select *
+    into current_membership
+    from public.memberships m
+    where m.user_id = target_user_id
+      and m.gym_id = active_gym_id
+      and m.end_date < as_of
+      and m.status in ('expired', 'active')
+    order by m.end_date desc, m.created_at desc
+    limit 1;
+
     next_start := as_of;
     next_end := app.calculate_membership_end_date(next_start, plan_record.duration_type, plan_record.duration_days);
 
@@ -280,6 +301,7 @@ begin
       end_date,
       status,
       renewal_count,
+      renewed_from_membership_id,
       last_renewed_at
     )
     values (
@@ -291,7 +313,8 @@ begin
       next_start,
       next_end,
       'active',
-      0,
+      case when current_membership.id is null then 0 else current_membership.renewal_count + 1 end,
+      current_membership.id,
       now()
     )
     returning * into result;

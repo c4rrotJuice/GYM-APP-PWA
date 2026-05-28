@@ -151,6 +151,7 @@ export async function listUserMemberships(userId, { appContext } = {}) {
 export async function assignMembershipPlanToUser({ userId, planId, appContext } = {}) {
   try {
     const queryContext = await createQueryContext(appContext, { action: 'memberships:assign_plan' });
+    const gymId = requireGymId(queryContext.gymId);
 
     if (!userId || !planId) {
       throw new Error('Choose a member and membership plan.');
@@ -162,7 +163,23 @@ export async function assignMembershipPlanToUser({ userId, planId, appContext } 
       target_payment_id: null
     });
 
-    return { membership: error ? null : normalizeMembership(data), error };
+    if (error) {
+      return { membership: null, error };
+    }
+
+    const { data: membership, error: fetchError } = await scopedSelect(
+      queryContext.supabase,
+      'memberships',
+      MEMBERSHIP_COLUMNS,
+      { gymId }
+    )
+      .eq('id', data.id)
+      .single();
+
+    return {
+      membership: normalizeMembership(membership || data),
+      error: fetchError
+    };
   } catch (error) {
     return { membership: null, error };
   }

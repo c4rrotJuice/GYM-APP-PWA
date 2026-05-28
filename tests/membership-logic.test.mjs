@@ -35,6 +35,11 @@ assert.equal(
   'pending',
   'future memberships resolve as pending'
 );
+assert.equal(
+  resolveMembershipStatus({ status: 'pending', start_date: '2026-05-01', end_date: '2026-06-01' }, { asOf: '2026-05-29' }),
+  'active',
+  'pending memberships become active once started'
+);
 
 assert.deepEqual(
   calculateRenewalWindow([
