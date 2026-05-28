@@ -1,4 +1,3 @@
-const crypto = require('node:crypto');
 const https = require('node:https');
 
 const ALLOWED_CREATE_ROLES = new Set(['member', 'trainer', 'admin']);
@@ -268,8 +267,11 @@ function parsePayload(body) {
   };
 }
 
-function createDefaultPassword() {
-  return crypto.randomBytes(18).toString('base64url');
+function createDefaultPassword(role, date = new Date()) {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
+
+  return `${role}${month}${year}`;
 }
 
 function serviceHeaders(env) {
