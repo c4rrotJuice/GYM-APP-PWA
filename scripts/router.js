@@ -10,7 +10,7 @@ const ROUTES = {
   },
   members: {
     title: 'Users',
-    description: 'Admin tools for profile review, role filters, trainer assignment, and account status.',
+    description: 'Admin tools for user creation, profile edits, role management, trainer assignment, and account status.',
     metrics: [
       ['User records', 'Live'],
       ['Trainer assignment', 'Ready'],
@@ -130,7 +130,8 @@ export function initRouter({ target, navItems, appContext, supabaseReady }) {
 }
 
 function normalizeRoute(hash) {
-  return hash.replace('#', '').trim().toLowerCase() || 'dashboard';
+  const route = hash.replace('#', '').trim().toLowerCase() || 'dashboard';
+  return route === 'users' ? 'members' : route;
 }
 
 function renderNavigation(navItems, role) {

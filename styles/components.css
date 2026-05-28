@@ -199,7 +199,8 @@
   font-weight: 800;
 }
 
-.field-group input {
+.field-group input,
+.field-group select {
   min-height: 52px;
   width: 100%;
   border: 1px solid var(--color-line);
@@ -209,7 +210,8 @@
   color: var(--color-ink);
 }
 
-.field-group input:focus {
+.field-group input:focus,
+.field-group select:focus {
   border-color: var(--color-accent);
 }
 

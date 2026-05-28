@@ -1,4 +1,5 @@
-const ALLOWED_CREATE_ROLES = new Set(['member', 'trainer']);
+const ALLOWED_CREATE_ROLES = new Set(['member', 'trainer', 'admin']);
+const ALLOWED_ACCOUNT_STATUSES = new Set(['active', 'suspended', 'disabled']);
 const USER_PROFILE_COLUMNS = 'id, gym_id, fullname, email, phone, role, assigned_trainer, account_status, created_at, updated_at';
 
 export async function handler(event) {
@@ -28,7 +29,7 @@ export async function handler(event) {
 
   if (
     currentProfile.profile.role !== 'admin' ||
-    currentProfile.profile.account_status !== 'active' ||
+    normalizeStatus(currentProfile.profile.account_status) !== 'active' ||
     !currentProfile.profile.gym_id
   ) {
     return jsonResponse(403, { error: 'Only active admins can create users.' });
@@ -144,7 +145,9 @@ async function createAuthUser(env, payload, temporaryPassword) {
       email_confirm: true,
       user_metadata: {
         fullname: payload.fullname,
-        phone: payload.phone || null
+        phone: payload.phone || null,
+        role: payload.role,
+        gym_id: payload.gym_id
       }
     })
   });
@@ -172,6 +175,7 @@ async function createProfile(env, authId, payload) {
       email: payload.email,
       phone: payload.phone,
       role: payload.role,
+      account_status: payload.account_status,
       assigned_trainer: payload.assigned_trainer,
       created_at: new Date().toISOString()
     })
@@ -211,6 +215,7 @@ function parsePayload(body) {
   const email = String(parsed?.email || '').trim().toLowerCase();
   const phone = normalizeNullableText(parsed?.phone);
   const role = String(parsed?.role || '').trim().toLowerCase();
+  const accountStatus = String(parsed?.account_status || 'active').trim().toLowerCase();
   const assignedTrainer = normalizeNullableText(parsed?.assigned_trainer);
 
   if (!fullname) {
@@ -222,7 +227,11 @@ function parsePayload(body) {
   }
 
   if (!ALLOWED_CREATE_ROLES.has(role)) {
-    return { error: 'Role must be member or trainer.' };
+    return { error: 'Role must be member, trainer, or admin.' };
+  }
+
+  if (!ALLOWED_ACCOUNT_STATUSES.has(accountStatus)) {
+    return { error: 'Status must be active, suspended, or disabled.' };
   }
 
   return {
@@ -231,6 +240,7 @@ function parsePayload(body) {
       email,
       phone,
       role,
+      account_status: accountStatus,
       assigned_trainer: role === 'member' ? assignedTrainer : null
     }
   };
@@ -253,6 +263,10 @@ function serviceHeaders(env) {
 function normalizeNullableText(value) {
   const text = String(value || '').trim();
   return text || null;
+}
+
+function normalizeStatus(status) {
+  return String(status || '').trim().toLowerCase();
 }
 
 function readBearerToken(headers) {

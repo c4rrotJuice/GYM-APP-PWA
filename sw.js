@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gym-pwa-shell-v13';
+const CACHE_VERSION = 'gym-pwa-shell-v14';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;

@@ -148,6 +148,11 @@
   color: #991b1b;
 }
 
+.status-pill[data-state="future"] {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .role-pill {
   display: inline-flex;
   min-height: 28px;
@@ -170,6 +175,16 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
+}
+
+.user-filter-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #f8fafc;
 }
 
 .filter-group,
@@ -235,6 +250,146 @@
 
 .user-table tr:last-child td {
   border-bottom: 0;
+}
+
+.user-card-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.user-card,
+.empty-state {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.user-card-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.user-card h3,
+.user-card p,
+.empty-state strong,
+.empty-state span {
+  margin: 0;
+}
+
+.user-card h3 {
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.user-card p,
+.empty-state span,
+.membership-strip {
+  color: var(--color-muted);
+}
+
+.user-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.user-card-meta span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+}
+
+.user-card-meta strong {
+  color: var(--color-ink);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.membership-strip,
+.membership-placeholder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed #f59e0b;
+  border-radius: var(--radius);
+  background: #fffbeb;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  align-items: end;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.admin-modal-backdrop[hidden] {
+  display: none;
+}
+
+.admin-modal {
+  display: grid;
+  width: min(100%, 680px);
+  max-height: min(92vh, 820px);
+  gap: 14px;
+  margin: 0 auto;
+  overflow: auto;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+}
+
+.admin-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-modal-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.user-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.user-card-loading {
+  pointer-events: none;
+}
+
+.skeleton-line {
+  width: 55%;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e2e8f0, #f8fafc, #e2e8f0);
+}
+
+.skeleton-line-wide {
+  width: 78%;
+}
+
+.skeleton-line-short {
+  width: 34%;
 }
 
 .user-detail-row td {
@@ -356,6 +511,22 @@
     grid-template-columns: repeat(3, 1fr);
   }
 
+  .user-filter-form {
+    grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(150px, 1fr));
+  }
+
+  .user-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-modal-backdrop {
+    align-items: center;
+  }
+
+  .user-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .user-detail-grid {
     grid-template-columns: minmax(0, 1fr) minmax(320px, 1fr);
   }
@@ -390,5 +561,17 @@
 
   .filter-button {
     flex: 1 1 120px;
+  }
+
+  .user-card-main {
+    display: grid;
+  }
+
+  .user-card-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-modal-backdrop {
+    padding: 8px;
   }
 }

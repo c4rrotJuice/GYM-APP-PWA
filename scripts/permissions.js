@@ -75,7 +75,10 @@ const ROLE_CAPABILITIES = Object.freeze({
 export const ACTION_PERMISSIONS = Object.freeze({
   'users:create': ['members:manage'],
   'users:list': ['members:view_all', 'members:view_assigned'],
+  'users:update': ['members:manage'],
+  'users:change_role': ['members:manage'],
   'users:assign_trainer': ['members:assign_trainer'],
+  'users:set_status': ['members:disable'],
   'users:disable': ['members:disable'],
   'memberships:count_active': ['memberships:view_all'],
   'settings:update': ['settings:manage']

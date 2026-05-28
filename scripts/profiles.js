@@ -1,6 +1,7 @@
 import { getSupabaseClientReady } from './supabase.js';
 import { getRoleCapabilities, normalizeRole } from './permissions.js';
 import { createQueryContext, requireGymId, scopedInsert, scopedSelect, scopedUpdate } from './tenant-queries.js';
+import { USER_ROLES, USER_STATUSES, normalizeUpdatePayload, normalizeUserStatus } from './admin/users.js';
 
 const PROFILE_COLUMNS = [
   'id',
@@ -16,7 +17,8 @@ const PROFILE_COLUMNS = [
 ].join(', ');
 
 const INACTIVE_ACCOUNT_VALUES = ['suspended', 'disabled', 'inactive'];
-const MANAGEABLE_ROLES = new Set(['admin', 'trainer', 'member']);
+const MANAGEABLE_ROLES = new Set(USER_ROLES);
+const MANAGEABLE_STATUSES = new Set(USER_STATUSES);
 const DEFAULT_PROFILE_ROLE = 'member';
 const DEFAULT_FULLNAME = 'New Member';
 const DEFAULT_GYM_SLUG = 'default-gym';
@@ -82,7 +84,7 @@ export async function getCurrentUserProfile(supabase, userId) {
   return fetchUserProfile(supabase, userId);
 }
 
-export async function listUsers({ role, session, appContext, gymId } = {}) {
+export async function listUsers({ role, status, trainerId, search, session, appContext, gymId } = {}) {
   let queryContext = null;
 
   try {
@@ -93,6 +95,17 @@ export async function listUsers({ role, session, appContext, gymId } = {}) {
   }
 
   const normalizedRole = normalizeRole(role);
+  const normalizedStatusResult = nullSafe(() => (
+    status && status !== 'all' ? normalizeUserStatus(status) : null
+  ));
+
+  if (normalizedStatusResult.error) {
+    return { users: [], error: normalizedStatusResult.error };
+  }
+
+  const normalizedStatus = normalizedStatusResult.value;
+  const normalizedTrainerId = String(trainerId || '').trim();
+  const normalizedSearch = String(search || '').trim();
   let query = scopedSelect(queryContext.supabase, 'users', PROFILE_COLUMNS, { gymId })
     .order('fullname', { ascending: true });
 
@@ -108,6 +121,21 @@ export async function listUsers({ role, session, appContext, gymId } = {}) {
     query = query.eq('role', normalizedRole);
   }
 
+  if (normalizedStatus) {
+    query = query.eq('account_status', normalizedStatus);
+  }
+
+  if (normalizedTrainerId === 'unassigned') {
+    query = query.is('assigned_trainer', null);
+  } else if (normalizedTrainerId) {
+    query = query.eq('assigned_trainer', normalizedTrainerId);
+  }
+
+  if (normalizedSearch) {
+    const pattern = `%${escapeSearchPattern(normalizedSearch)}%`;
+    query = query.or(`fullname.ilike.${pattern},email.ilike.${pattern},phone.ilike.${pattern}`);
+  }
+
   const { data, error } = await query;
 
   if (error) {
@@ -115,6 +143,85 @@ export async function listUsers({ role, session, appContext, gymId } = {}) {
   }
 
   return { users: (data || []).map(normalizeProfile), error: null };
+}
+
+export async function updateUserProfile(userId, payload, { session, appContext, gymId } = {}) {
+  let queryContext = null;
+
+  try {
+    queryContext = await createQueryContext(appContext || session, { action: 'users:update' });
+    gymId = requireGymId(gymId || queryContext.gymId);
+  } catch (error) {
+    return { profile: null, error };
+  }
+
+  if (!userId) {
+    return { profile: null, error: new Error('Missing user context for update.') };
+  }
+
+  const values = nullSafe(() => normalizeUpdatePayload(payload));
+  if (values.error) {
+    return { profile: null, error: values.error };
+  }
+
+  const existing = await fetchUserProfile(queryContext.supabase, userId);
+  if (existing.error) {
+    return existing;
+  }
+
+  if (existing.profile.gym_id !== gymId) {
+    return { profile: null, error: new Error('This profile is outside the active gym.') };
+  }
+
+  if (!MANAGEABLE_ROLES.has(existing.profile.role) || !MANAGEABLE_ROLES.has(values.value.role)) {
+    return { profile: null, error: new Error('This user profile does not have a manageable role.') };
+  }
+
+  if (queryContext.userId === userId) {
+    if (values.value.role !== existing.profile.role) {
+      return { profile: null, error: new Error('Admins cannot change their own role from this screen.') };
+    }
+
+    if (isInactiveProfile(values.value)) {
+      return { profile: null, error: new Error('Admins cannot disable their own account from this screen.') };
+    }
+  }
+
+  if (!MANAGEABLE_STATUSES.has(values.value.account_status)) {
+    return { profile: null, error: new Error('This user status is not manageable.') };
+  }
+
+  if (values.value.assigned_trainer) {
+    const trainerValidation = await validateTrainerAssignment(
+      queryContext.supabase,
+      values.value.assigned_trainer,
+      gymId
+    );
+
+    if (trainerValidation.error) {
+      return { profile: null, error: trainerValidation.error };
+    }
+  }
+
+  const updateValues = {
+    fullname: values.value.fullname,
+    phone: values.value.phone,
+    role: values.value.role,
+    account_status: values.value.account_status,
+    assigned_trainer: values.value.assigned_trainer,
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await scopedUpdate(queryContext.supabase, 'users', updateValues, { gymId })
+    .eq('id', userId)
+    .select(PROFILE_COLUMNS)
+    .single();
+
+  if (error) {
+    return { profile: null, error };
+  }
+
+  return { profile: normalizeProfile(data), error: null };
 }
 
 export async function updateUserAssignedTrainer(userId, trainerId, { session, appContext, gymId } = {}) {
@@ -145,20 +252,9 @@ export async function updateUserAssignedTrainer(userId, trainerId, { session, ap
 
   const assignedTrainer = String(trainerId || '').trim() || null;
   if (assignedTrainer) {
-    const trainer = await fetchUserProfile(queryContext.supabase, assignedTrainer);
-    if (trainer.error) {
-      return { profile: null, error: trainer.error };
-    }
-
-    if (
-      trainer.profile.role !== 'trainer' ||
-      trainer.profile.gym_id !== gymId ||
-      isInactiveProfile(trainer.profile)
-    ) {
-      return {
-        profile: null,
-        error: new Error('Assigned trainer must be an active trainer profile in this gym.')
-      };
+    const trainerValidation = await validateTrainerAssignment(queryContext.supabase, assignedTrainer, gymId);
+    if (trainerValidation.error) {
+      return { profile: null, error: trainerValidation.error };
     }
   }
 
@@ -178,17 +274,26 @@ export async function updateUserAssignedTrainer(userId, trainerId, { session, ap
 }
 
 export async function deactivateUserProfile(userId, { session, appContext, gymId } = {}) {
+  return setUserAccountStatus(userId, 'disabled', { session, appContext, gymId });
+}
+
+export async function setUserAccountStatus(userId, status, { session, appContext, gymId } = {}) {
   let queryContext = null;
 
   try {
-    queryContext = await createQueryContext(appContext || session, { action: 'users:disable' });
+    queryContext = await createQueryContext(appContext || session, { action: 'users:set_status' });
     gymId = requireGymId(gymId || queryContext.gymId);
   } catch (error) {
     return { profile: null, error };
   }
 
   if (!userId) {
-    return { profile: null, error: new Error('Missing user context for deactivation.') };
+    return { profile: null, error: new Error('Missing user context for status update.') };
+  }
+
+  const accountStatus = nullSafe(() => normalizeUserStatus(status));
+  if (accountStatus.error) {
+    return { profile: null, error: accountStatus.error };
   }
 
   const existing = await fetchUserProfile(queryContext.supabase, userId);
@@ -196,12 +301,20 @@ export async function deactivateUserProfile(userId, { session, appContext, gymId
     return existing;
   }
 
+  if (existing.profile.gym_id !== gymId) {
+    return { profile: null, error: new Error('This profile is outside the active gym.') };
+  }
+
   if (!MANAGEABLE_ROLES.has(existing.profile.role)) {
     return { profile: null, error: new Error('This user profile does not have a manageable role.') };
   }
 
+  if (queryContext.userId === userId && isInactiveProfile({ account_status: accountStatus.value })) {
+    return { profile: null, error: new Error('Admins cannot disable their own account from this screen.') };
+  }
+
   const { data, error } = await scopedUpdate(queryContext.supabase, 'users', {
-      account_status: 'disabled',
+      account_status: accountStatus.value,
       updated_at: new Date().toISOString()
     }, { gymId })
     .eq('id', userId)
@@ -283,6 +396,40 @@ function normalizeProfile(profile) {
     role: normalizeRole(profile.role),
     account_status: String(profile.account_status || '').toLowerCase()
   };
+}
+
+async function validateTrainerAssignment(supabase, trainerId, gymId) {
+  const trainer = await fetchUserProfile(supabase, trainerId);
+  if (trainer.error) {
+    return { error: trainer.error };
+  }
+
+  if (
+    trainer.profile.role !== 'trainer' ||
+    trainer.profile.gym_id !== gymId ||
+    isInactiveProfile(trainer.profile)
+  ) {
+    return {
+      error: new Error('Assigned trainer must be an active trainer profile in this gym.')
+    };
+  }
+
+  return { error: null };
+}
+
+function nullSafe(callback) {
+  try {
+    return { value: callback(), error: null };
+  } catch (error) {
+    return { value: null, error };
+  }
+}
+
+function escapeSearchPattern(value) {
+  return String(value || '')
+    .replaceAll(',', ' ')
+    .replaceAll('%', '\\%')
+    .replaceAll('_', '\\_');
 }
 
 async function getDefaultGymId(supabase) {
