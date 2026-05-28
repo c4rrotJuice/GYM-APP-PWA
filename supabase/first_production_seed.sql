@@ -6,6 +6,7 @@ begin;
 
 insert into public.users (
   id,
+  gym_id,
   fullname,
   email,
   phone,
@@ -17,6 +18,7 @@ insert into public.users (
 values
 (
   '82120aa0-0327-422a-8973-dd0ee0d98d19',
+  (select id from public.gyms where slug = 'default-gym'),
   'Enoch Admin',
   'enoch.freelance@gmail.com',
   null,
@@ -27,6 +29,7 @@ values
 ),
 (
   'af06e254-c03e-4f2c-b212-60d99ae66d19',
+  (select id from public.gyms where slug = 'default-gym'),
   'The Pages Trainer',
   'thepages.ug@gmail.com',
   null,
@@ -37,6 +40,7 @@ values
 ),
 (
   'c88e735d-e92d-484f-a826-e5ee1408ac18',
+  (select id from public.gyms where slug = 'default-gym'),
   'Milley Member',
   'milley.kk@gmail.com',
   null,
@@ -48,6 +52,7 @@ values
 on conflict (id) do update
 set
   fullname = excluded.fullname,
+  gym_id = excluded.gym_id,
   email = excluded.email,
   role = excluded.role,
   assigned_trainer = excluded.assigned_trainer,
@@ -59,6 +64,7 @@ set
 
 insert into public.workout_programs (
   id,
+  gym_id,
   title,
   description,
   created_by
@@ -66,12 +72,14 @@ insert into public.workout_programs (
 values
 (
   gen_random_uuid(),
+  (select id from public.gyms where slug = 'default-gym'),
   'Beginner Conditioning',
   'Starter full-body routine focused on consistency and endurance.',
   'af06e254-c03e-4f2c-b212-60d99ae66d19'
 ),
 (
   gen_random_uuid(),
+  (select id from public.gyms where slug = 'default-gym'),
   'Strength Foundation',
   'Compound lifts for progressive overload training.',
   'af06e254-c03e-4f2c-b212-60d99ae66d19'
@@ -83,6 +91,7 @@ on conflict do nothing;
 -- =====================================================
 
 insert into public.memberships (
+  gym_id,
   user_id,
   type,
   start_date,
@@ -91,6 +100,7 @@ insert into public.memberships (
 )
 values
 (
+  (select id from public.gyms where slug = 'default-gym'),
   'c88e735d-e92d-484f-a826-e5ee1408ac18',
   'Monthly',
   current_date,
@@ -104,6 +114,7 @@ on conflict do nothing;
 -- =====================================================
 
 insert into public.attendance_qr_tokens (
+  gym_id,
   token,
   validity_type,
   issued_at,
@@ -113,6 +124,7 @@ insert into public.attendance_qr_tokens (
 )
 values
 (
+  (select id from public.gyms where slug = 'default-gym'),
   encode(gen_random_bytes(32), 'hex'),
   'monthly',
   now(),
@@ -127,11 +139,13 @@ on conflict do nothing;
 -- =====================================================
 
 insert into public.user_workouts (
+  gym_id,
   user_id,
   workout_id,
   assigned_at
 )
 select
+  wp.gym_id,
   'c88e735d-e92d-484f-a826-e5ee1408ac18',
   wp.id,
   now()
@@ -145,6 +159,7 @@ on conflict do nothing;
 -- =====================================================
 
 insert into public.progress_logs (
+  gym_id,
   user_id,
   weight,
   notes,
@@ -152,6 +167,7 @@ insert into public.progress_logs (
 )
 values
 (
+  (select id from public.gyms where slug = 'default-gym'),
   'c88e735d-e92d-484f-a826-e5ee1408ac18',
   72.5,
   'Initial onboarding assessment completed.',
@@ -164,6 +180,7 @@ on conflict do nothing;
 -- =====================================================
 
 insert into public.payments (
+  gym_id,
   user_id,
   amount,
   method,
@@ -172,6 +189,7 @@ insert into public.payments (
 )
 values
 (
+  (select id from public.gyms where slug = 'default-gym'),
   'c88e735d-e92d-484f-a826-e5ee1408ac18',
   120000,
   'mobile_money',
@@ -185,12 +203,14 @@ on conflict do nothing;
 -- =====================================================
 
 insert into public.attendance_logs (
+  gym_id,
   user_id,
   qr_token_id,
   scanned_at,
   status
 )
 select
+  t.gym_id,
   'c88e735d-e92d-484f-a826-e5ee1408ac18',
   t.id,
   now(),

@@ -433,18 +433,13 @@ function escapeSearchPattern(value) {
 }
 
 async function getDefaultGymId(supabase) {
-  const { data, error } = await supabase
-    .from('gyms')
-    .select('id')
-    .eq('slug', DEFAULT_GYM_SLUG)
-    .eq('active', true)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('default_gym_id');
 
-  if (error || !data?.id) {
+  if (error || !data) {
     return null;
   }
 
-  return data.id;
+  return data;
 }
 
 function getFullnameFromUser(user) {

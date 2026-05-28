@@ -100,11 +100,18 @@ export function scopedInsert(supabase, table, values, { gymId } = {}) {
 }
 
 export function scopedUpdate(supabase, table, values, { gymId } = {}) {
-  let query = supabase.from(table).update(values);
+  const updateValues = { ...values };
 
   if (TENANT_SCOPED_TABLES.has(table)) {
-    query = query.eq('gym_id', requireGymId(gymId));
+    const scopedGymId = requireGymId(gymId);
+
+    if (updateValues.gym_id && updateValues.gym_id !== scopedGymId) {
+      throw new Error('Tenant-scoped updates cannot override the active gym context.');
+    }
+
+    delete updateValues.gym_id;
+    return supabase.from(table).update(updateValues).eq('gym_id', scopedGymId);
   }
 
-  return query;
+  return supabase.from(table).update(updateValues);
 }

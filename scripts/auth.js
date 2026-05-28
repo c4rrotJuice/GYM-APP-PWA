@@ -1,5 +1,6 @@
 import { getSupabaseClientReady } from './supabase.js';
-import { setAppContextFromSession } from './app-context.js';
+import { clearAppContext, setAppContextFromSession } from './app-context.js';
+import { clearDashboardBootstrapCache } from './dashboard-bootstrap.js';
 import { redirectToDashboard } from './guards.js';
 import {
   attachProfileToSession,
@@ -104,10 +105,14 @@ export async function signOut() {
   const supabase = await getSupabaseClientReady();
 
   if (!supabase) {
+    clearAppContext();
+    clearDashboardBootstrapCache();
     return { error: null, ready: false };
   }
 
   const { error } = await supabase.auth.signOut();
+  clearAppContext();
+  clearDashboardBootstrapCache();
   return { error, ready: true };
 }
 
