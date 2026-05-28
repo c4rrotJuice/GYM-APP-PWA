@@ -1,8 +1,10 @@
+const https = require('node:https');
+
 const ALLOWED_CREATE_ROLES = new Set(['member', 'trainer', 'admin']);
 const ALLOWED_ACCOUNT_STATUSES = new Set(['active', 'suspended', 'disabled']);
 const USER_PROFILE_COLUMNS = 'id, gym_id, fullname, email, phone, role, assigned_trainer, account_status, created_at, updated_at';
 
-export async function handler(event) {
+exports.handler = async function handler(event) {
   try {
     if (event.httpMethod !== 'POST') {
       return jsonResponse(405, { error: 'Method not allowed.' });
@@ -77,7 +79,7 @@ export async function handler(event) {
       error: error?.message || 'Unable to create user right now.'
     });
   }
-}
+};
 
 function getEnvironment() {
   const url = process.env.SUPABASE_URL || '';
@@ -89,50 +91,58 @@ function getEnvironment() {
 
   return {
     ok: true,
-    value: { url, serviceRoleKey }
+    value: { url: url.replace(/\/$/, ''), serviceRoleKey }
   };
 }
 
 async function getAuthenticatedUser(env, accessToken) {
-  const response = await fetch(`${env.url}/auth/v1/user`, {
+  const response = await requestJson(`${env.url}/auth/v1/user`, {
     headers: {
       apikey: env.serviceRoleKey,
       Authorization: `Bearer ${accessToken}`
     }
   });
 
-  const result = await readJson(response);
   if (!response.ok) {
-    return { user: null, error: result?.msg || result?.error_description || 'Unable to verify session.' };
+    return {
+      user: null,
+      error: response.body?.msg || response.body?.error_description || response.body?.message || 'Unable to verify session.'
+    };
   }
 
-  return { user: result, error: null };
+  return { user: response.body, error: null };
 }
 
 async function getAdminProfile(env, userId) {
-  const response = await fetch(`${env.url}/rest/v1/users?select=${encodeURIComponent(USER_PROFILE_COLUMNS)}&id=eq.${encodeURIComponent(userId)}`, {
+  const query = `select=${encodeURIComponent(USER_PROFILE_COLUMNS)}&id=eq.${encodeURIComponent(userId)}`;
+  const response = await requestJson(`${env.url}/rest/v1/users?${query}`, {
     headers: serviceHeaders(env)
   });
 
-  const result = await readJson(response);
   if (!response.ok) {
-    return { profile: null, error: result?.message || 'Unable to load admin profile.' };
+    return { profile: null, error: response.body?.message || 'Unable to load admin profile.' };
   }
 
-  return { profile: Array.isArray(result) ? result[0] || null : null, error: null };
+  return { profile: Array.isArray(response.body) ? response.body[0] || null : null, error: null };
 }
 
 async function validateAssignedTrainer(env, trainerId, gymId) {
-  const response = await fetch(`${env.url}/rest/v1/users?select=id&id=eq.${encodeURIComponent(trainerId)}&gym_id=eq.${encodeURIComponent(gymId)}&role=eq.trainer&account_status=eq.active`, {
+  const query = [
+    'select=id',
+    `id=eq.${encodeURIComponent(trainerId)}`,
+    `gym_id=eq.${encodeURIComponent(gymId)}`,
+    'role=eq.trainer',
+    'account_status=eq.active'
+  ].join('&');
+  const response = await requestJson(`${env.url}/rest/v1/users?${query}`, {
     headers: serviceHeaders(env)
   });
 
-  const result = await readJson(response);
   if (!response.ok) {
-    return { error: result?.message || 'Unable to validate assigned trainer.' };
+    return { error: response.body?.message || 'Unable to validate assigned trainer.' };
   }
 
-  if (!Array.isArray(result) || !result.length) {
+  if (!Array.isArray(response.body) || !response.body.length) {
     return { error: 'Assigned trainer is not valid.' };
   }
 
@@ -140,20 +150,16 @@ async function validateAssignedTrainer(env, trainerId, gymId) {
 }
 
 async function createAuthUser(env, payload, temporaryPassword) {
-  const response = await fetch(`${env.url}/auth/v1/admin/users`, {
+  const response = await requestJson(`${env.url}/auth/v1/admin/users`, {
     method: 'POST',
     headers: {
       ...serviceHeaders(env),
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
+    body: {
       email: payload.email,
       password: temporaryPassword,
       email_confirm: true,
-      app_metadata: {
-        role: payload.role,
-        gym_id: payload.gym_id
-      },
       user_metadata: {
         fullname: payload.fullname,
         full_name: payload.fullname,
@@ -163,26 +169,28 @@ async function createAuthUser(env, payload, temporaryPassword) {
         assigned_trainer: payload.assigned_trainer,
         gym_id: payload.gym_id
       }
-    })
+    }
   });
 
-  const result = await readJson(response);
   if (!response.ok) {
-    return { user: null, error: result?.msg || result?.message || 'Unable to create auth user.' };
+    return {
+      user: null,
+      error: response.body?.msg || response.body?.message || response.body?.error_description || 'Unable to create auth user.'
+    };
   }
 
-  return { user: result.user || result, error: null };
+  return { user: response.body?.user || response.body, error: null };
 }
 
 async function createProfile(env, authId, payload) {
-  const response = await fetch(`${env.url}/rest/v1/users?on_conflict=id`, {
+  const response = await requestJson(`${env.url}/rest/v1/users?on_conflict=id`, {
     method: 'POST',
     headers: {
       ...serviceHeaders(env),
       'Content-Type': 'application/json',
       Prefer: 'resolution=merge-duplicates,return=representation'
     },
-    body: JSON.stringify({
+    body: {
       id: authId,
       gym_id: payload.gym_id,
       fullname: payload.fullname,
@@ -192,20 +200,19 @@ async function createProfile(env, authId, payload) {
       account_status: payload.account_status,
       assigned_trainer: payload.assigned_trainer,
       created_at: new Date().toISOString()
-    })
+    }
   });
 
-  const result = await readJson(response);
   if (!response.ok) {
-    return { profile: null, error: result?.message || 'Unable to create user profile.' };
+    return { profile: null, error: response.body?.message || response.bodyText || 'Unable to create user profile.' };
   }
 
-  return { profile: Array.isArray(result) ? result[0] || null : null, error: null };
+  return { profile: Array.isArray(response.body) ? response.body[0] || null : null, error: null };
 }
 
 async function deleteAuthUser(env, authId) {
   try {
-    await fetch(`${env.url}/auth/v1/admin/users/${authId}`, {
+    await requestJson(`${env.url}/auth/v1/admin/users/${authId}`, {
       method: 'DELETE',
       headers: serviceHeaders(env)
     });
@@ -292,16 +299,61 @@ function readBearerToken(headers) {
   return authorization.slice('Bearer '.length).trim();
 }
 
-async function readJson(response) {
-  try {
-    return await response.clone().json();
-  } catch (error) {
-    try {
-      const text = await response.text();
-      return text ? { message: text } : null;
-    } catch (textError) {
-      return null;
+function requestJson(url, { method = 'GET', headers = {}, body = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const requestBody = body ? JSON.stringify(body) : null;
+    const requestUrl = new URL(url);
+    const request = https.request({
+      protocol: requestUrl.protocol,
+      hostname: requestUrl.hostname,
+      port: requestUrl.port || 443,
+      path: `${requestUrl.pathname}${requestUrl.search}`,
+      method,
+      headers: {
+        Accept: 'application/json',
+        ...headers,
+        ...(requestBody ? { 'Content-Length': Buffer.byteLength(requestBody) } : {})
+      },
+      timeout: 12000
+    }, (response) => {
+      let bodyText = '';
+
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        bodyText += chunk;
+      });
+      response.on('end', () => {
+        resolve({
+          ok: response.statusCode >= 200 && response.statusCode < 300,
+          status: response.statusCode,
+          body: parseJson(bodyText),
+          bodyText
+        });
+      });
+    });
+
+    request.on('timeout', () => {
+      request.destroy(new Error(`Request timed out calling ${requestUrl.hostname}`));
+    });
+    request.on('error', reject);
+
+    if (requestBody) {
+      request.write(requestBody);
     }
+
+    request.end();
+  });
+}
+
+function parseJson(text) {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return null;
   }
 }
 
@@ -315,5 +367,3 @@ function jsonResponse(statusCode, body) {
     body: JSON.stringify(body)
   };
 }
-
-export default handler;
