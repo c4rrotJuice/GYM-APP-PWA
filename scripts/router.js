@@ -3,6 +3,7 @@ import { getAppContext } from './app-context.js';
 import { getRememberedRoute, rememberNavigationState } from './dashboard-state.js';
 import { ROUTE_DEFINITIONS, createTopSubNavigation, renderBottomNavigation } from './navigation.js';
 import { createAdminDashboardView, initAdminDashboardPage } from '../pages/admin/dashboard.js';
+import { createMembershipsView, initMembershipsPage } from '../pages/admin/memberships.js';
 import { createUsersView, initUsersPage } from '../pages/admin/users.js';
 import { createTrainerDashboardView, initTrainerDashboardPage } from '../pages/trainer/dashboard.js';
 import { createTrainerMembersView, initTrainerMembersPage } from '../pages/trainer/members.js';
@@ -34,6 +35,10 @@ const PAGE_REGISTRY = Object.freeze({
         init: initTrainerMembersPage
       }
     }
+  },
+  memberships: {
+    render: createMembershipsView,
+    init: initMembershipsPage
   },
   attendance: {
     render: createModulePlaceholderView,

@@ -20,6 +20,11 @@ export const ROUTE_PERMISSIONS = Object.freeze({
     roles: [ROLES.ADMIN, ROLES.TRAINER],
     capability: 'members:view'
   },
+  memberships: {
+    label: 'Memberships',
+    roles: [ROLES.ADMIN, ROLES.TRAINER, ROLES.MEMBER],
+    capability: 'memberships:view'
+  },
   workouts: {
     label: 'Workouts',
     roles: [ROLES.ADMIN, ROLES.TRAINER, ROLES.MEMBER],
@@ -45,6 +50,11 @@ const ROLE_CAPABILITIES = Object.freeze({
     'members:assign_trainer',
     'members:disable',
     'memberships:view_all',
+    'memberships:view',
+    'membership_plans:view',
+    'membership_plans:manage',
+    'memberships:assign_plan',
+    'memberships:suspend',
     'workouts:view',
     'workouts:view_all',
     'workouts:manage',
@@ -57,6 +67,8 @@ const ROLE_CAPABILITIES = Object.freeze({
     'attendance:view_assigned',
     'members:view',
     'members:view_assigned',
+    'memberships:view',
+    'memberships:view_assigned',
     'workouts:view',
     'workouts:view_assigned',
     'workouts:assign'
@@ -67,6 +79,8 @@ const ROLE_CAPABILITIES = Object.freeze({
     'attendance:view',
     'attendance:view_own',
     'attendance:scan',
+    'memberships:view',
+    'memberships:view_own',
     'workouts:view',
     'workouts:view_own'
   ]
@@ -81,6 +95,11 @@ export const ACTION_PERMISSIONS = Object.freeze({
   'users:set_status': ['members:disable'],
   'users:disable': ['members:disable'],
   'memberships:count_active': ['memberships:view_all'],
+  'memberships:list': ['memberships:view_all', 'memberships:view_assigned', 'memberships:view_own'],
+  'memberships:assign_plan': ['memberships:assign_plan'],
+  'membership_plans:list': ['membership_plans:view', 'membership_plans:manage'],
+  'membership_plans:create': ['membership_plans:manage'],
+  'membership_plans:update': ['membership_plans:manage'],
   'settings:update': ['settings:manage']
 });
 

@@ -62,6 +62,7 @@ select pg_temp.expect_eq(
       and c.relname in (
         'gyms',
         'users',
+        'membership_plans',
         'memberships',
         'attendance_qr_tokens',
         'attendance_logs',

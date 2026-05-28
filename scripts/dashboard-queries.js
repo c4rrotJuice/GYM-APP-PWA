@@ -8,7 +8,13 @@ import {
 export async function getAdminDashboardData({ appContext } = {}) {
   const [usersResult, membershipResult, attendanceResult, workoutResult] = await Promise.all([
     listUsers({ appContext }),
-    countScopedRows('memberships', { appContext, filters: [{ column: 'status', value: 'active' }] }),
+    countScopedRows('memberships', {
+      appContext,
+      filters: [
+        { column: 'status', value: 'active' },
+        { column: 'end_date', operator: 'gte', value: new Date().toISOString().slice(0, 10) }
+      ]
+    }),
     countScopedRows('attendance_logs', { appContext }),
     countScopedRows('workout_programs', { appContext })
   ]);

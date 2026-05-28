@@ -667,6 +667,54 @@
   font-weight: 700;
 }
 
+.membership-admin-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.membership-plan-grid,
+.membership-record-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.membership-plan-card,
+.membership-record-card {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.membership-plan-card h3,
+.membership-plan-card p,
+.membership-record-card h3,
+.membership-record-card p {
+  margin: 0;
+}
+
+.membership-assignment-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-ink);
+  font-weight: 800;
+}
+
+.checkbox-row input {
+  width: 18px;
+  height: 18px;
+}
+
 .admin-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -891,6 +939,16 @@
 
   .user-form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .membership-plan-grid,
+  .membership-record-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .membership-assignment-form {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: end;
   }
 
   .user-detail-grid {

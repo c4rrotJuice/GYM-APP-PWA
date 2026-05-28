@@ -73,9 +73,9 @@ export async function countScopedRows(table, { appContext, filters = [] } = {}) 
     });
 
     filters
-      .filter((filter) => filter.value)
+      .filter((filter) => typeof filter.value !== 'undefined' && filter.value !== null && filter.value !== '')
       .forEach((filter) => {
-        query = query.eq(filter.column, filter.value);
+        query = applyFilter(query, filter);
       });
 
     const { count, error } = await query;
@@ -83,6 +83,28 @@ export async function countScopedRows(table, { appContext, filters = [] } = {}) 
   } catch (error) {
     return { count: 0, error };
   }
+}
+
+function applyFilter(query, filter) {
+  const operator = filter.operator || 'eq';
+
+  if (operator === 'gte') {
+    return query.gte(filter.column, filter.value);
+  }
+
+  if (operator === 'lte') {
+    return query.lte(filter.column, filter.value);
+  }
+
+  if (operator === 'lt') {
+    return query.lt(filter.column, filter.value);
+  }
+
+  if (operator === 'gt') {
+    return query.gt(filter.column, filter.value);
+  }
+
+  return query.eq(filter.column, filter.value);
 }
 
 function normalizeProfile(profile) {

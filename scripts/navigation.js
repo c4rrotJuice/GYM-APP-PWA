@@ -9,6 +9,10 @@ export const ROUTE_DEFINITIONS = Object.freeze({
     title: 'Users',
     description: 'Profiles, trainer assignment, and account access for permitted roles.'
   },
+  memberships: {
+    title: 'Memberships',
+    description: 'Membership plans, renewals, expiry state, and member assignment.'
+  },
   attendance: {
     title: 'Attendance',
     description: 'Attendance workspace prepared for Phase 3 QR scan workflows.'
@@ -27,16 +31,18 @@ const TOP_NAVIGATION = Object.freeze({
   admin: [
     { label: 'Overview', route: 'dashboard' },
     { label: 'Users', route: 'members' },
-    { label: 'Trainers', route: 'members' },
+    { label: 'Memberships', route: 'memberships' },
     { label: 'Reports', route: 'dashboard', disabled: true, badge: 'Future' }
   ],
   trainer: [
     { label: 'Dashboard', route: 'dashboard' },
     { label: 'Assigned Members', route: 'members' },
+    { label: 'Memberships', route: 'memberships' },
     { label: 'Programs', route: 'workouts' }
   ],
   member: [
     { label: 'Dashboard', route: 'dashboard' },
+    { label: 'Membership', route: 'memberships' },
     { label: 'Attendance', route: 'attendance' },
     { label: 'Workouts', route: 'workouts' },
     { label: 'Progress', route: 'workouts', disabled: true, badge: 'Future' }
