@@ -25,8 +25,8 @@ const PAYMENT_COLUMNS = [
   'external_provider',
   'external_transaction_id',
   'provider_payload',
-  'users(fullname, email)',
-  'memberships(id, type, start_date, end_date, status, membership_plan_id, membership_plans(name, price))'
+  'member:users!payments_user_id_fkey(fullname, email)',
+  'membership:memberships!payments_membership_id_fkey(id, type, start_date, end_date, status, membership_plan_id, membership_plans(name, price))'
 ].join(', ');
 
 export {
@@ -157,8 +157,8 @@ function normalizePayment(payment) {
     amount: normalizeMoney(payment?.amount),
     method: normalizePaymentMethod(payment?.method),
     status: normalizePaymentStatus(payment?.status),
-    member: payment?.users || null,
-    membership: payment?.memberships || null
+    member: payment?.member || null,
+    membership: payment?.membership || null
   };
 }
 
