@@ -9,9 +9,10 @@ import {
   getMemberOperationalProfile,
   getTrainerAssignedMembers
 } from './role-queries.js';
+import { getFinancialSummary, listPayments } from './payments.js';
 
 export async function getAdminDashboardData({ appContext } = {}) {
-  const [usersResult, membershipResult, expiringResult, attendanceResult, workoutResult] = await Promise.all([
+  const [usersResult, membershipResult, expiringResult, attendanceResult, workoutResult, financialResult, paymentsResult] = await Promise.all([
     listUsers({ appContext }),
     countScopedRows('memberships', {
       appContext,
@@ -22,7 +23,9 @@ export async function getAdminDashboardData({ appContext } = {}) {
     }),
     listExpiringMemberships({ appContext, windowDays: 7 }),
     countScopedRows('attendance_logs', { appContext }),
-    countScopedRows('workout_programs', { appContext })
+    countScopedRows('workout_programs', { appContext }),
+    getFinancialSummary({ appContext }),
+    listPayments(null, { appContext, limit: 8 })
   ]);
 
   const errors = [
@@ -45,7 +48,14 @@ export async function getAdminDashboardData({ appContext } = {}) {
         activeMemberships: membershipResult.count,
         expiringSoon: expiringResult.error ? null : expiringResult.memberships.length,
         attendanceLogs: attendanceResult.error ? null : attendanceResult.count,
-        workoutPrograms: workoutResult.error ? null : workoutResult.count
+        workoutPrograms: workoutResult.error ? null : workoutResult.count,
+        totalRevenue: financialResult.summary?.totalRevenue ?? null,
+        monthlyRevenue: financialResult.summary?.monthlyRevenue ?? null,
+        pendingBalances: financialResult.summary?.pendingBalances ?? null
+      },
+      financial: {
+        summary: financialResult.summary,
+        recentTransactions: paymentsResult.payments || []
       },
       memberships: {
         expiringSoon: expiringResult.memberships || []

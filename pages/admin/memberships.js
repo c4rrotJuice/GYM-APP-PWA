@@ -13,6 +13,14 @@ import {
   saveMembershipPlan,
   suspendMembership
 } from '../../scripts/memberships.js';
+import {
+  PAYMENT_METHODS,
+  PAYMENT_STATUSES,
+  getFinancialSummary,
+  listOutstandingBalances,
+  listPayments,
+  recordMembershipPayment
+} from '../../scripts/payments.js';
 import { listUsers } from '../../scripts/profiles.js';
 import { escapeHtml, formatDate } from '../../scripts/dashboard-layout.js';
 
@@ -20,6 +28,14 @@ const DURATION_LABELS = Object.freeze({
   weekly: 'Weekly',
   monthly: 'Monthly',
   custom: 'Custom'
+});
+
+const PAYMENT_METHOD_LABELS = Object.freeze({
+  cash: 'Cash',
+  card: 'Card',
+  mobile_money: 'Mobile money',
+  bank_transfer: 'Bank transfer',
+  other: 'Other'
 });
 
 export function createMembershipsView({ role }) {
@@ -55,6 +71,75 @@ export function createMembershipsView({ role }) {
         </form>
         <div class="auth-message" data-assignment-message role="status" aria-live="polite"></div>
       </section>
+
+      <section class="panel membership-admin-panel" data-finance-admin>
+        <div class="user-admin-toolbar">
+          <div>
+            <h2>Financial Overview</h2>
+            <p data-finance-count>Loading revenue and balances...</p>
+          </div>
+        </div>
+        <div class="finance-metric-grid" data-finance-summary aria-busy="true"></div>
+        <div class="auth-message" data-finance-message role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="panel membership-admin-panel" data-payment-recording>
+        <div>
+          <h2>Record Payment</h2>
+          <p>Cash is the default. Completed payments activate or renew memberships; pending payments are recorded without activating access.</p>
+        </div>
+        <form class="membership-assignment-form" data-payment-form>
+          <div class="field-group">
+            <label for="payment-member">Member</label>
+            <select id="payment-member" name="user_id" required data-payment-member></select>
+          </div>
+          <div class="field-group">
+            <label for="payment-plan">Plan</label>
+            <select id="payment-plan" name="plan_id" required data-payment-plan></select>
+          </div>
+          <div class="field-group">
+            <label for="payment-amount">Amount</label>
+            <input id="payment-amount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required data-payment-amount>
+          </div>
+          <div class="field-group">
+            <label for="payment-method">Method</label>
+            <select id="payment-method" name="method" data-payment-method>
+              <option value="cash" selected>Cash</option>
+              <option value="mobile_money">Mobile money</option>
+              <option value="card">Card</option>
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="payment-status">Status</label>
+            <select id="payment-status" name="status">
+              <option value="completed" selected>Completed</option>
+              <option value="pending">Pending</option>
+              <option value="failed">Failed</option>
+              <option value="refunded">Refunded</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="payment-reference">Reference</label>
+            <input id="payment-reference" name="reference" type="text" placeholder="Receipt or provider reference">
+          </div>
+          <div class="field-group">
+            <label for="payment-provider">External provider</label>
+            <input id="payment-provider" name="external_provider" type="text" placeholder="mtn_momo">
+          </div>
+          <div class="field-group">
+            <label for="payment-provider-id">Provider transaction ID</label>
+            <input id="payment-provider-id" name="external_transaction_id" type="text">
+          </div>
+          <div class="field-group">
+            <label for="payment-notes">Notes</label>
+            <input id="payment-notes" name="notes" type="text">
+          </div>
+          <button class="button button-primary" type="submit" data-payment-submit>Record payment</button>
+        </form>
+        <div class="auth-message" data-payment-message role="status" aria-live="polite"></div>
+      </section>
     `
     : '';
 
@@ -76,6 +161,17 @@ export function createMembershipsView({ role }) {
       </div>
       <div class="auth-message" data-membership-message role="status" aria-live="polite"></div>
       <div class="membership-record-grid" data-membership-list aria-busy="true"></div>
+    </section>
+
+    <section class="panel membership-admin-panel" data-payment-history>
+      <div class="user-admin-toolbar">
+        <div>
+          <h2>Payment History</h2>
+          <p data-payment-count>Loading transactions...</p>
+        </div>
+      </div>
+      <div class="auth-message" data-payment-history-message role="status" aria-live="polite"></div>
+      <div class="membership-record-grid" data-payment-list aria-busy="true"></div>
     </section>
 
     <div class="admin-modal-backdrop" data-renewal-modal hidden>
@@ -148,6 +244,19 @@ export function createMembershipsView({ role }) {
         </form>
       </section>
     </div>
+
+    <div class="admin-modal-backdrop" data-transaction-modal hidden>
+      <section class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="transaction-modal-title">
+        <div class="admin-modal-header">
+          <div>
+            <p class="eyebrow">Transaction detail</p>
+            <h2 id="transaction-modal-title">Payment</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-transaction-modal aria-label="Close transaction detail">x</button>
+        </div>
+        <div class="transaction-detail" data-transaction-detail></div>
+      </section>
+    </div>
   `;
 }
 
@@ -159,16 +268,23 @@ export async function initMembershipsPage({ target, role, appContext }) {
     users: [],
     memberships: [],
     history: [],
+    payments: [],
+    balances: [],
+    financialSummary: null,
     editingPlanId: null
   };
 
   const planRoot = target.querySelector('[data-plan-admin]');
   const recordsRoot = target.querySelector('[data-membership-records]');
   const assignmentRoot = target.querySelector('[data-membership-assign]');
+  const financeRoot = target.querySelector('[data-finance-admin]');
+  const paymentRoot = target.querySelector('[data-payment-recording]');
+  const paymentHistoryRoot = target.querySelector('[data-payment-history]');
   const modal = target.querySelector('[data-plan-modal]');
   const form = target.querySelector('[data-plan-form]');
   const renewalModal = target.querySelector('[data-renewal-modal]');
   const renewalForm = target.querySelector('[data-renewal-form]');
+  const transactionModal = target.querySelector('[data-transaction-modal]');
 
   if (planRoot && modal && form) {
     planRoot.addEventListener('click', (event) => handlePlanRootClick(event, modal, form, state));
@@ -180,28 +296,44 @@ export async function initMembershipsPage({ target, role, appContext }) {
   assignmentRoot?.querySelector('[data-assignment-form]')?.addEventListener('submit', (event) => (
     handleAssignmentSubmit(event, assignmentRoot, recordsRoot, state)
   ));
+  paymentRoot?.querySelector('[data-payment-plan]')?.addEventListener('change', () => syncPaymentAmount(paymentRoot, state));
+  paymentRoot?.querySelector('[data-payment-form]')?.addEventListener('submit', (event) => (
+    handlePaymentSubmit(event, paymentRoot, recordsRoot, paymentHistoryRoot, financeRoot, state)
+  ));
   recordsRoot?.addEventListener('click', (event) => handleMembershipAction(event, recordsRoot, renewalModal, renewalForm, state));
+  paymentHistoryRoot?.addEventListener('click', (event) => handlePaymentHistoryClick(event, transactionModal, state));
   renewalModal?.addEventListener('click', (event) => handleRenewalModalClick(event, renewalModal));
   renewalForm?.addEventListener('submit', (event) => handleRenewalSubmit(event, recordsRoot, renewalModal, renewalForm, state));
+  transactionModal?.addEventListener('click', (event) => handleTransactionModalClick(event, transactionModal));
 
-  await loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, state });
+  await loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, financeRoot, paymentRoot, paymentHistoryRoot, state });
 }
 
-async function loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, state }) {
+async function loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, financeRoot, paymentRoot, paymentHistoryRoot, state }) {
   setBusy(planRoot?.querySelector('[data-plan-list]'), true);
   setBusy(recordsRoot?.querySelector('[data-membership-list]'), true);
+  setBusy(financeRoot?.querySelector('[data-finance-summary]'), true);
+  setBusy(paymentHistoryRoot?.querySelector('[data-payment-list]'), true);
 
-  const [plansResult, usersResult, membershipsResult, historyResult] = await Promise.all([
+  const [plansResult, usersResult, membershipsResult, historyResult, paymentsResult, summaryResult, balancesResult] = await Promise.all([
     state.role === 'admin' ? listMembershipPlans({ appContext: state.appContext }) : Promise.resolve({ plans: [], error: null }),
     state.role === 'admin' ? listUsers({ appContext: state.appContext, role: 'member' }) : Promise.resolve({ users: [], error: null }),
     listUserMemberships(state.role === 'member' ? state.appContext?.user?.id : null, { appContext: state.appContext }),
-    listMembershipHistory(state.role === 'member' ? state.appContext?.user?.id : null, { appContext: state.appContext })
+    listMembershipHistory(state.role === 'member' ? state.appContext?.user?.id : null, { appContext: state.appContext }),
+    state.role === 'trainer'
+      ? Promise.resolve({ payments: [], error: null })
+      : listPayments(state.role === 'member' ? state.appContext?.user?.id : null, { appContext: state.appContext }),
+    state.role === 'admin' ? getFinancialSummary({ appContext: state.appContext }) : Promise.resolve({ summary: null, error: null }),
+    state.role === 'admin' ? listOutstandingBalances({ appContext: state.appContext }) : Promise.resolve({ balances: [], error: null })
   ]);
 
   state.plans = plansResult.plans || [];
   state.users = usersResult.users || [];
   state.memberships = membershipsResult.memberships || [];
   state.history = historyResult.history || [];
+  state.payments = paymentsResult.payments || [];
+  state.financialSummary = summaryResult.summary || null;
+  state.balances = balancesResult.balances || [];
 
   if (planRoot) {
     renderPlans(planRoot, state);
@@ -213,10 +345,24 @@ async function loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, 
     setPanelMessage(assignmentRoot, usersResult.error?.message || '', usersResult.error ? 'error' : '');
   }
 
+  if (paymentRoot) {
+    renderPaymentForm(paymentRoot, state);
+    setPanelMessage(paymentRoot, '', '');
+  }
+
+  if (financeRoot) {
+    renderFinancialSummary(financeRoot, state);
+    setPanelMessage(financeRoot, summaryResult.error?.message || balancesResult.error?.message || '', (summaryResult.error || balancesResult.error) ? 'error' : '');
+  }
+
   renderMemberships(recordsRoot, state);
   setPanelMessage(recordsRoot, membershipsResult.error?.message || historyResult.error?.message || '', (membershipsResult.error || historyResult.error) ? 'error' : '');
+  renderPaymentHistory(paymentHistoryRoot, state);
+  setPanelMessage(paymentHistoryRoot, paymentsResult.error?.message || '', paymentsResult.error ? 'error' : '');
   setBusy(planRoot?.querySelector('[data-plan-list]'), false);
   setBusy(recordsRoot?.querySelector('[data-membership-list]'), false);
+  setBusy(financeRoot?.querySelector('[data-finance-summary]'), false);
+  setBusy(paymentHistoryRoot?.querySelector('[data-payment-list]'), false);
 }
 
 function handleMembershipAction(event, recordsRoot, renewalModal, renewalForm, state) {
@@ -242,6 +388,21 @@ function handleRenewalModalClick(event, modal) {
   if (event.target.closest('[data-close-renewal-modal]') || event.target === modal) {
     closeRenewalModal(modal);
   }
+}
+
+function handleTransactionModalClick(event, modal) {
+  if (event.target.closest('[data-close-transaction-modal]') || event.target === modal) {
+    modal.hidden = true;
+  }
+}
+
+function handlePaymentHistoryClick(event, modal, state) {
+  const detailButton = event.target.closest('[data-view-payment]');
+  if (!detailButton) {
+    return;
+  }
+
+  openTransactionModal(modal, state, detailButton.dataset.viewPayment);
 }
 
 function handlePlanRootClick(event, modal, form, state) {
@@ -342,6 +503,47 @@ async function handleAssignmentSubmit(event, assignmentRoot, recordsRoot, state)
   setInlineMessage(message, 'Membership assigned.', 'success');
 }
 
+async function handlePaymentSubmit(event, paymentRoot, recordsRoot, paymentHistoryRoot, financeRoot, state) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('[data-payment-submit]');
+  const message = paymentRoot.querySelector('[data-payment-message]');
+
+  setInlineMessage(message, 'Recording payment...', '');
+  submit.disabled = true;
+
+  const { payment, error } = await recordMembershipPayment(getPaymentPayload(form), { appContext: state.appContext });
+
+  submit.disabled = false;
+
+  if (error) {
+    setInlineMessage(message, error.message || 'Unable to record payment.', 'error');
+    return;
+  }
+
+  state.payments = [payment, ...state.payments.filter((item) => item.id !== payment.id)];
+  const [membershipsResult, historyResult, summaryResult, balancesResult] = await Promise.all([
+    listUserMemberships(null, { appContext: state.appContext }),
+    listMembershipHistory(null, { appContext: state.appContext }),
+    getFinancialSummary({ appContext: state.appContext }),
+    listOutstandingBalances({ appContext: state.appContext })
+  ]);
+
+  state.memberships = membershipsResult.memberships || state.memberships;
+  state.history = historyResult.history || state.history;
+  state.financialSummary = summaryResult.summary || state.financialSummary;
+  state.balances = balancesResult.balances || state.balances;
+
+  renderMemberships(recordsRoot, state);
+  renderPaymentHistory(paymentHistoryRoot, state);
+  renderFinancialSummary(financeRoot, state);
+  form.reset();
+  renderPaymentForm(paymentRoot, state);
+  setInlineMessage(message, payment.status === PAYMENT_STATUSES.COMPLETED
+    ? 'Payment recorded and membership updated.'
+    : 'Payment recorded without membership activation.', 'success');
+}
+
 async function handleRenewalSubmit(event, recordsRoot, modal, form, state) {
   event.preventDefault();
   const submit = form.querySelector('[data-renewal-submit]');
@@ -439,6 +641,61 @@ function renderAssignmentForm(root, state) {
     : '<option value="">No active plans available</option>';
 }
 
+function renderPaymentForm(root, state) {
+  const memberSelect = root.querySelector('[data-payment-member]');
+  const planSelect = root.querySelector('[data-payment-plan]');
+  const activePlans = state.plans.filter((plan) => plan.active);
+
+  memberSelect.innerHTML = state.users.length
+    ? state.users.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.fullname || user.email)}</option>`).join('')
+    : '<option value="">No members available</option>';
+
+  planSelect.innerHTML = activePlans.length
+    ? activePlans.map((plan) => `<option value="${escapeHtml(plan.id)}" data-price="${escapeHtml(plan.price)}">${escapeHtml(plan.name)} (${escapeHtml(formatMoney(plan.price))})</option>`).join('')
+    : '<option value="">No active plans available</option>';
+
+  const method = root.querySelector('[data-payment-method]');
+  if (method) {
+    method.value = PAYMENT_METHODS.CASH;
+  }
+
+  syncPaymentAmount(root, state);
+}
+
+function renderFinancialSummary(root, state) {
+  const summaryRoot = root?.querySelector('[data-finance-summary]');
+  const count = root?.querySelector('[data-finance-count]');
+
+  if (!summaryRoot || !count) {
+    return;
+  }
+
+  const summary = state.financialSummary || { totalRevenue: 0, monthlyRevenue: 0, pendingBalances: 0 };
+  count.textContent = `${state.payments.length} ${state.payments.length === 1 ? 'transaction' : 'transactions'} tracked`;
+  summaryRoot.innerHTML = `
+    <article class="metric-card">
+      <span>Total revenue</span>
+      <strong>${escapeHtml(formatMoney(summary.totalRevenue))}</strong>
+      <small>Completed payments</small>
+    </article>
+    <article class="metric-card">
+      <span>Monthly revenue</span>
+      <strong>${escapeHtml(formatMoney(summary.monthlyRevenue))}</strong>
+      <small>Completed this month</small>
+    </article>
+    <article class="metric-card" data-state="${summary.pendingBalances > 0 ? 'warning' : 'active'}">
+      <span>Pending balances</span>
+      <strong>${escapeHtml(formatMoney(summary.pendingBalances))}</strong>
+      <small>Outstanding or pending payment records</small>
+    </article>
+    <article class="metric-card">
+      <span>Recent transactions</span>
+      <strong>${escapeHtml(state.payments.slice(0, 8).length)}</strong>
+      <small>Latest visible records</small>
+    </article>
+  `;
+}
+
 function renderMemberships(root, state) {
   const list = root.querySelector('[data-membership-list]');
   const count = root.querySelector('[data-membership-count]');
@@ -474,6 +731,7 @@ function renderMemberships(root, state) {
     const canSuspend = showAdminActions && [MEMBERSHIP_STATUSES.ACTIVE, MEMBERSHIP_STATUSES.PENDING].includes(membership.status);
     const canReactivate = showAdminActions && membership.status === MEMBERSHIP_STATUSES.SUSPENDED;
     const isCurrent = currentByUser.get(membership.user_id) === membership.id;
+    const balance = state.balances.find((item) => item.membership_id === membership.id);
 
     return `
       <article class="membership-record-card">
@@ -489,6 +747,7 @@ function renderMemberships(root, state) {
           ${expiringSoon ? `<span class="expiry-badge" data-state="warning">Expires in ${escapeHtml(daysRemaining)} days</span>` : ''}
           ${membership.status === MEMBERSHIP_STATUSES.EXPIRED ? '<span class="expiry-badge" data-state="inactive">Historical</span>' : ''}
           ${membership.status === MEMBERSHIP_STATUSES.PENDING ? '<span class="expiry-badge" data-state="future">Upcoming renewal</span>' : ''}
+          ${balance ? `<span class="expiry-badge" data-state="warning">Outstanding ${escapeHtml(formatMoney(balance.outstanding_amount))}</span>` : ''}
         </div>
         <div class="user-card-meta">
           <span><strong>Start</strong>${escapeHtml(formatDate(membership.start_date))}</span>
@@ -510,6 +769,66 @@ function renderMemberships(root, state) {
             <button class="button button-secondary button-compact" type="button" data-reactivate-membership="${escapeHtml(membership.id)}"${canReactivate ? '' : ' disabled'}>Reactivate</button>
           </div>
         ` : ''}
+      </article>
+    `;
+  }).join('');
+}
+
+function renderPaymentHistory(root, state) {
+  const list = root?.querySelector('[data-payment-list]');
+  const count = root?.querySelector('[data-payment-count]');
+
+  if (!list || !count) {
+    return;
+  }
+
+  count.textContent = `${state.payments.length} ${state.payments.length === 1 ? 'transaction' : 'transactions'} shown`;
+
+  if (state.role === 'trainer') {
+    list.innerHTML = renderEmpty('Payment access restricted', 'Financial records are limited to admins and the member who owns the payment.');
+    return;
+  }
+
+  if (!state.payments.length) {
+    list.innerHTML = renderEmpty(
+      state.role === 'admin' ? 'No payments recorded yet' : 'No payment history found',
+      state.role === 'admin'
+        ? 'Use Record Payment above to create cash, mobile money, card, bank transfer, or other payment records.'
+        : 'Your completed and pending membership payments will appear here.'
+    );
+    return;
+  }
+
+  list.innerHTML = state.payments.map((payment) => {
+    const user = state.users.find((item) => item.id === payment.user_id) || payment.member;
+    const membership = payment.membership || {};
+    const plan = membership.membership_plans || {};
+    const balance = state.balances.find((item) => item.membership_id === payment.membership_id);
+
+    return `
+      <article class="membership-record-card">
+        <div class="user-card-main">
+          <div>
+            <h3>${escapeHtml(formatMoney(payment.amount))}</h3>
+            <p>${escapeHtml(user?.fullname || user?.email || 'Member payment')}</p>
+          </div>
+          <span class="status-pill" data-state="${paymentStatusState(payment.status)}">${escapeHtml(formatStatus(payment.status))}</span>
+        </div>
+        <div class="membership-badge-row">
+          <span class="expiry-badge" data-state="${payment.method === PAYMENT_METHODS.CASH ? 'active' : 'future'}">${escapeHtml(PAYMENT_METHOD_LABELS[payment.method] || payment.method)}</span>
+          ${payment.reference ? `<span class="expiry-badge" data-state="future">${escapeHtml(payment.reference)}</span>` : ''}
+          ${payment.external_provider ? `<span class="expiry-badge" data-state="future">${escapeHtml(payment.external_provider)}</span>` : ''}
+          ${balance ? `<span class="expiry-badge" data-state="warning">Balance ${escapeHtml(formatMoney(balance.outstanding_amount))}</span>` : ''}
+        </div>
+        <div class="user-card-meta">
+          <span><strong>Plan</strong>${escapeHtml(plan.name || membership.type || 'Not linked')}</span>
+          <span><strong>Paid</strong>${escapeHtml(payment.paid_at ? formatDate(payment.paid_at) : 'Not completed')}</span>
+          <span><strong>Recorded</strong>${escapeHtml(formatDate(payment.created_at))}</span>
+          <span><strong>Membership</strong>${escapeHtml(payment.membership_id ? 'Linked' : 'Not activated')}</span>
+        </div>
+        <div class="user-actions">
+          <button class="button button-secondary button-compact" type="button" data-view-payment="${escapeHtml(payment.id)}">Details</button>
+        </div>
       </article>
     `;
   }).join('');
@@ -565,6 +884,33 @@ function closePlanModal(modal) {
   modal.hidden = true;
 }
 
+function openTransactionModal(modal, state, paymentId) {
+  const payment = state.payments.find((item) => item.id === paymentId);
+  if (!modal || !payment) {
+    return;
+  }
+
+  const user = state.users.find((item) => item.id === payment.user_id) || payment.member;
+  const membership = payment.membership || {};
+  const plan = membership.membership_plans || {};
+  modal.querySelector('[data-transaction-detail]').innerHTML = `
+    <dl class="dashboard-key-values">
+      <div><dt>Amount</dt><dd>${escapeHtml(formatMoney(payment.amount))}</dd></div>
+      <div><dt>Status</dt><dd>${escapeHtml(formatStatus(payment.status))}</dd></div>
+      <div><dt>Method</dt><dd>${escapeHtml(PAYMENT_METHOD_LABELS[payment.method] || payment.method)}</dd></div>
+      <div><dt>Member</dt><dd>${escapeHtml(user?.fullname || user?.email || payment.user_id)}</dd></div>
+      <div><dt>Plan</dt><dd>${escapeHtml(plan.name || membership.type || 'Not linked')}</dd></div>
+      <div><dt>Reference</dt><dd>${escapeHtml(payment.reference || 'None')}</dd></div>
+      <div><dt>Provider</dt><dd>${escapeHtml(payment.external_provider || 'Manual')}</dd></div>
+      <div><dt>Provider transaction</dt><dd>${escapeHtml(payment.external_transaction_id || 'None')}</dd></div>
+      <div><dt>Paid at</dt><dd>${escapeHtml(payment.paid_at ? formatDate(payment.paid_at) : 'Not completed')}</dd></div>
+      <div><dt>Recorded</dt><dd>${escapeHtml(formatDate(payment.created_at))}</dd></div>
+      <div><dt>Notes</dt><dd>${escapeHtml(payment.notes || 'None')}</dd></div>
+    </dl>
+  `;
+  modal.hidden = false;
+}
+
 function syncDurationDays(form) {
   const type = form.querySelector('[data-plan-duration-type]')?.value;
   const days = form.querySelector('[data-plan-duration-days]');
@@ -580,6 +926,16 @@ function syncDurationDays(form) {
   }
 }
 
+function syncPaymentAmount(root, state) {
+  const planId = root?.querySelector('[data-payment-plan]')?.value;
+  const amount = root?.querySelector('[data-payment-amount]');
+  const plan = state.plans.find((item) => item.id === planId);
+
+  if (amount && plan) {
+    amount.value = plan.price;
+  }
+}
+
 function getPlanPayload(form) {
   const data = new FormData(form);
   return {
@@ -590,6 +946,21 @@ function getPlanPayload(form) {
     duration_days: String(data.get('duration_days') || '').trim(),
     price: String(data.get('price') || '0').trim(),
     active: data.get('active') === 'on'
+  };
+}
+
+function getPaymentPayload(form) {
+  const data = new FormData(form);
+  return {
+    user_id: String(data.get('user_id') || '').trim(),
+    plan_id: String(data.get('plan_id') || '').trim(),
+    amount: String(data.get('amount') || '').trim(),
+    method: String(data.get('method') || PAYMENT_METHODS.CASH).trim(),
+    status: String(data.get('status') || PAYMENT_STATUSES.COMPLETED).trim(),
+    reference: String(data.get('reference') || '').trim(),
+    external_provider: String(data.get('external_provider') || '').trim(),
+    external_transaction_id: String(data.get('external_transaction_id') || '').trim(),
+    notes: String(data.get('notes') || '').trim()
   };
 }
 
@@ -636,6 +1007,18 @@ function statusState(status) {
   }
 
   if (status === 'expired' || status === 'cancelled' || status === 'suspended') {
+    return 'inactive';
+  }
+
+  return 'future';
+}
+
+function paymentStatusState(status) {
+  if (status === PAYMENT_STATUSES.COMPLETED) {
+    return 'active';
+  }
+
+  if (status === PAYMENT_STATUSES.FAILED || status === PAYMENT_STATUSES.REFUNDED) {
     return 'inactive';
   }
 

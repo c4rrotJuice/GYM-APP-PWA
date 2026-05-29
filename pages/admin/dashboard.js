@@ -76,6 +76,9 @@ function renderAdminDashboard(data) {
       { label: 'Members', value: data.totals.totalMembers, detail: 'Member accounts' },
       { label: 'Trainers', value: data.totals.totalTrainers, detail: 'Trainer accounts' },
       { label: 'Active memberships', value: data.totals.activeMemberships, detail: 'Currently active records' },
+      { label: 'Total revenue', value: formatMoney(data.totals.totalRevenue), detail: 'Completed payments' },
+      { label: 'Monthly revenue', value: formatMoney(data.totals.monthlyRevenue), detail: 'Completed this month' },
+      { label: 'Pending balances', value: formatMoney(data.totals.pendingBalances), detail: 'Outstanding or pending records', state: data.totals.pendingBalances > 0 ? 'warning' : 'active' },
       { label: 'Expiring soon', value: data.totals.expiringSoon, detail: 'Ending within 7 days' }
     ], { label: 'Admin dashboard metrics' })}
 
@@ -100,6 +103,20 @@ function renderAdminDashboard(data) {
         ])
       })}
     </div>
+
+    ${createDashboardSection({
+      title: 'Recent Transactions',
+      description: 'Latest tenant payment records for audit review.',
+      body: createCompactList((data.financial?.recentTransactions || []).slice(0, 5).map((payment) => ({
+        title: formatMoney(payment.amount),
+        description: `${payment.member?.fullname || payment.member?.email || 'Member'} - ${payment.method || 'cash'} - ${formatDate(payment.created_at)}`,
+        badge: payment.status,
+        state: payment.status === 'completed' ? 'active' : payment.status === 'pending' ? 'future' : 'inactive'
+      })), {
+        emptyTitle: 'No payments recorded',
+        emptyDescription: 'Use Memberships to record the first payment.'
+      })
+    })}
 
     ${createDashboardSection({
       title: 'Membership Expiry Watch',
@@ -152,4 +169,15 @@ function roleLabel(role) {
 
 function statusLabel(status) {
   return status === 'active' ? 'Active' : 'Needs review';
+}
+
+function formatMoney(value) {
+  if (value === null || value === undefined) {
+    return '...';
+  }
+
+  return Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
 }

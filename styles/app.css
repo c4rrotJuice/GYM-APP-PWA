@@ -673,7 +673,8 @@
 }
 
 .membership-plan-grid,
-.membership-record-grid {
+.membership-record-grid,
+.finance-metric-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
@@ -1006,7 +1007,8 @@
   }
 
   .membership-plan-grid,
-  .membership-record-grid {
+  .membership-record-grid,
+  .finance-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

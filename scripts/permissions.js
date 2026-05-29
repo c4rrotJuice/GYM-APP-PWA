@@ -55,6 +55,9 @@ const ROLE_CAPABILITIES = Object.freeze({
     'membership_plans:manage',
     'memberships:assign_plan',
     'memberships:suspend',
+    'payments:view_all',
+    'payments:record',
+    'payments:summary',
     'workouts:view',
     'workouts:view_all',
     'workouts:manage',
@@ -69,6 +72,7 @@ const ROLE_CAPABILITIES = Object.freeze({
     'members:view_assigned',
     'memberships:view',
     'memberships:view_assigned',
+    'payments:view_assigned',
     'workouts:view',
     'workouts:view_assigned',
     'workouts:assign'
@@ -81,6 +85,7 @@ const ROLE_CAPABILITIES = Object.freeze({
     'attendance:scan',
     'memberships:view',
     'memberships:view_own',
+    'payments:view_own',
     'workouts:view',
     'workouts:view_own'
   ]
@@ -103,6 +108,9 @@ export const ACTION_PERMISSIONS = Object.freeze({
   'membership_plans:list': ['membership_plans:view', 'membership_plans:manage'],
   'membership_plans:create': ['membership_plans:manage'],
   'membership_plans:update': ['membership_plans:manage'],
+  'payments:list': ['payments:view_all', 'payments:view_own'],
+  'payments:record': ['payments:record'],
+  'payments:summary': ['payments:summary'],
   'settings:update': ['settings:manage']
 });
 
