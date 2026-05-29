@@ -1,5 +1,6 @@
 let deferredInstallPrompt = null;
 const INSTALL_DISMISSED_KEY = 'gym-pwa-install-dismissed';
+let serviceWorkerRefreshing = false;
 
 export function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) {
@@ -9,6 +10,13 @@ export function registerServiceWorker() {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
+        registration.update();
+
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          showInstallStatus('Updating app...');
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+
         registration.addEventListener('updatefound', () => {
           const worker = registration.installing;
           if (!worker) {
@@ -17,7 +25,8 @@ export function registerServiceWorker() {
 
           worker.addEventListener('statechange', () => {
             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-              showInstallStatus('Update ready. Restart the app when convenient.');
+              showInstallStatus('Updating app...');
+              worker.postMessage({ type: 'SKIP_WAITING' });
             }
           });
         });
@@ -25,6 +34,15 @@ export function registerServiceWorker() {
       .catch((error) => {
         console.error('Service worker registration failed:', error);
       });
+  });
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (serviceWorkerRefreshing) {
+      return;
+    }
+
+    serviceWorkerRefreshing = true;
+    window.location.reload();
   });
 }
 

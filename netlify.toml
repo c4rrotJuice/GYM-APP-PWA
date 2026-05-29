@@ -15,9 +15,24 @@
 [[headers]]
   for = "/manifest.json"
   [headers.values]
-    Cache-Control = "public, max-age=3600"
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/scripts/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/styles/*"
+  [headers.values]
+    Cache-Control = "no-cache"
 
 [[headers]]
   for = "/scripts/env.runtime.js"
   [headers.values]
-    Cache-Control = "no-cache"
+    Cache-Control = "no-store"

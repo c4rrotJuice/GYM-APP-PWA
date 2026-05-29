@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gym-pwa-shell-v18';
+const CACHE_VERSION = 'gym-pwa-shell-v19';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
@@ -18,6 +18,7 @@ const APP_SHELL = [
   '/styles/app.css',
   '/scripts/main.js',
   '/scripts/app.js',
+  '/scripts/app-context.js',
   '/scripts/auth.js',
   '/scripts/admin/users.js',
   '/scripts/dashboard-bootstrap.js',
@@ -30,6 +31,8 @@ const APP_SHELL = [
   '/scripts/memberships.js',
   '/scripts/membership-logic.js',
   '/scripts/permissions.js',
+  '/scripts/payment-logic.js',
+  '/scripts/payments.js',
   '/scripts/profiles.js',
   '/scripts/role-components.js',
   '/scripts/role-queries.js',
@@ -37,6 +40,7 @@ const APP_SHELL = [
   '/scripts/router.js',
   '/scripts/session.js',
   '/scripts/supabase.js',
+  '/scripts/tenant-queries.js',
   '/pages/admin/dashboard.js',
   '/pages/admin/members.js',
   '/pages/admin/memberships.js',
@@ -77,6 +81,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -114,7 +124,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (isStaticAsset(url)) {
-    event.respondWith(cacheFirst(request, STATIC_CACHE));
+    event.respondWith(networkFirst(request, STATIC_CACHE));
     return;
   }
 
