@@ -1,11 +1,17 @@
 import {
   MEMBERSHIP_DURATION_TYPES,
+  MEMBERSHIP_STATUSES,
   assignMembershipPlanToUser,
   calculateRenewalWindow,
   deactivateMembershipPlan,
+  getDaysUntilExpiry,
+  isMembershipExpiringSoon,
+  listMembershipHistory,
   listMembershipPlans,
   listUserMemberships,
-  saveMembershipPlan
+  reactivateMembership,
+  saveMembershipPlan,
+  suspendMembership
 } from '../../scripts/memberships.js';
 import { listUsers } from '../../scripts/profiles.js';
 import { escapeHtml, formatDate } from '../../scripts/dashboard-layout.js';
@@ -45,7 +51,7 @@ export function createMembershipsView({ role }) {
             <label for="membership-plan">Plan</label>
             <select id="membership-plan" name="plan_id" required data-assignment-plan></select>
           </div>
-          <button class="button button-primary" type="submit" data-assignment-submit>Assign plan</button>
+          <button class="button button-primary" type="submit" data-assignment-submit>Assign or renew</button>
         </form>
         <div class="auth-message" data-assignment-message role="status" aria-live="polite"></div>
       </section>
@@ -71,6 +77,29 @@ export function createMembershipsView({ role }) {
       <div class="auth-message" data-membership-message role="status" aria-live="polite"></div>
       <div class="membership-record-grid" data-membership-list aria-busy="true"></div>
     </section>
+
+    <div class="admin-modal-backdrop" data-renewal-modal hidden>
+      <section class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="renewal-modal-title">
+        <div class="admin-modal-header">
+          <div>
+            <p class="eyebrow">Membership renewal</p>
+            <h2 id="renewal-modal-title">Renew Membership</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-renewal-modal aria-label="Close renewal form">x</button>
+        </div>
+
+        <form class="auth-form" data-renewal-form>
+          <input type="hidden" name="user_id">
+          <div class="membership-renewal-summary" data-renewal-summary></div>
+          <div class="field-group">
+            <label for="renewal-plan">Renewal plan</label>
+            <select id="renewal-plan" name="plan_id" required data-renewal-plan></select>
+          </div>
+          <div class="auth-message" data-renewal-message role="status" aria-live="polite"></div>
+          <button class="button button-primary" type="submit" data-renewal-submit>Renew membership</button>
+        </form>
+      </section>
+    </div>
 
     <div class="admin-modal-backdrop" data-plan-modal hidden>
       <section class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="plan-modal-title">
@@ -129,6 +158,7 @@ export async function initMembershipsPage({ target, role, appContext }) {
     plans: [],
     users: [],
     memberships: [],
+    history: [],
     editingPlanId: null
   };
 
@@ -137,6 +167,8 @@ export async function initMembershipsPage({ target, role, appContext }) {
   const assignmentRoot = target.querySelector('[data-membership-assign]');
   const modal = target.querySelector('[data-plan-modal]');
   const form = target.querySelector('[data-plan-form]');
+  const renewalModal = target.querySelector('[data-renewal-modal]');
+  const renewalForm = target.querySelector('[data-renewal-form]');
 
   if (planRoot && modal && form) {
     planRoot.addEventListener('click', (event) => handlePlanRootClick(event, modal, form, state));
@@ -148,6 +180,9 @@ export async function initMembershipsPage({ target, role, appContext }) {
   assignmentRoot?.querySelector('[data-assignment-form]')?.addEventListener('submit', (event) => (
     handleAssignmentSubmit(event, assignmentRoot, recordsRoot, state)
   ));
+  recordsRoot?.addEventListener('click', (event) => handleMembershipAction(event, recordsRoot, renewalModal, renewalForm, state));
+  renewalModal?.addEventListener('click', (event) => handleRenewalModalClick(event, renewalModal));
+  renewalForm?.addEventListener('submit', (event) => handleRenewalSubmit(event, recordsRoot, renewalModal, renewalForm, state));
 
   await loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, state });
 }
@@ -156,15 +191,17 @@ async function loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, 
   setBusy(planRoot?.querySelector('[data-plan-list]'), true);
   setBusy(recordsRoot?.querySelector('[data-membership-list]'), true);
 
-  const [plansResult, usersResult, membershipsResult] = await Promise.all([
+  const [plansResult, usersResult, membershipsResult, historyResult] = await Promise.all([
     state.role === 'admin' ? listMembershipPlans({ appContext: state.appContext }) : Promise.resolve({ plans: [], error: null }),
     state.role === 'admin' ? listUsers({ appContext: state.appContext, role: 'member' }) : Promise.resolve({ users: [], error: null }),
-    listUserMemberships(state.role === 'member' ? state.appContext?.user?.id : null, { appContext: state.appContext })
+    listUserMemberships(state.role === 'member' ? state.appContext?.user?.id : null, { appContext: state.appContext }),
+    listMembershipHistory(state.role === 'member' ? state.appContext?.user?.id : null, { appContext: state.appContext })
   ]);
 
   state.plans = plansResult.plans || [];
   state.users = usersResult.users || [];
   state.memberships = membershipsResult.memberships || [];
+  state.history = historyResult.history || [];
 
   if (planRoot) {
     renderPlans(planRoot, state);
@@ -177,9 +214,34 @@ async function loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, 
   }
 
   renderMemberships(recordsRoot, state);
-  setPanelMessage(recordsRoot, membershipsResult.error?.message || '', membershipsResult.error ? 'error' : '');
+  setPanelMessage(recordsRoot, membershipsResult.error?.message || historyResult.error?.message || '', (membershipsResult.error || historyResult.error) ? 'error' : '');
   setBusy(planRoot?.querySelector('[data-plan-list]'), false);
   setBusy(recordsRoot?.querySelector('[data-membership-list]'), false);
+}
+
+function handleMembershipAction(event, recordsRoot, renewalModal, renewalForm, state) {
+  const renewButton = event.target.closest('[data-renew-membership]');
+  if (renewButton) {
+    openRenewalModal(renewalModal, renewalForm, state, renewButton.dataset.renewMembership);
+    return;
+  }
+
+  const suspendButton = event.target.closest('[data-suspend-membership]');
+  if (suspendButton) {
+    void updateSuspensionState(recordsRoot, state, suspendButton.dataset.suspendMembership, 'suspend');
+    return;
+  }
+
+  const reactivateButton = event.target.closest('[data-reactivate-membership]');
+  if (reactivateButton) {
+    void updateSuspensionState(recordsRoot, state, reactivateButton.dataset.reactivateMembership, 'reactivate');
+  }
+}
+
+function handleRenewalModalClick(event, modal) {
+  if (event.target.closest('[data-close-renewal-modal]') || event.target === modal) {
+    closeRenewalModal(modal);
+  }
 }
 
 function handlePlanRootClick(event, modal, form, state) {
@@ -280,6 +342,57 @@ async function handleAssignmentSubmit(event, assignmentRoot, recordsRoot, state)
   setInlineMessage(message, 'Membership assigned.', 'success');
 }
 
+async function handleRenewalSubmit(event, recordsRoot, modal, form, state) {
+  event.preventDefault();
+  const submit = form.querySelector('[data-renewal-submit]');
+  const message = form.querySelector('[data-renewal-message]');
+  const data = new FormData(form);
+
+  setInlineMessage(message, 'Renewing membership...', '');
+  submit.disabled = true;
+
+  const { membership, error } = await assignMembershipPlanToUser({
+    userId: String(data.get('user_id') || ''),
+    planId: String(data.get('plan_id') || ''),
+    appContext: state.appContext
+  });
+
+  submit.disabled = false;
+
+  if (error) {
+    setInlineMessage(message, error.message || 'Unable to renew membership.', 'error');
+    return;
+  }
+
+  state.memberships = [membership, ...state.memberships.filter((item) => item.id !== membership.id)];
+  await refreshHistory(state);
+  renderMemberships(recordsRoot, state);
+  closeRenewalModal(modal);
+  setPanelMessage(recordsRoot, 'Membership renewed.', 'success');
+}
+
+async function updateSuspensionState(root, state, membershipId, action) {
+  setPanelMessage(root, action === 'suspend' ? 'Suspending membership...' : 'Reactivating membership...', '');
+  const result = action === 'suspend'
+    ? await suspendMembership(membershipId, { appContext: state.appContext })
+    : await reactivateMembership(membershipId, { appContext: state.appContext });
+
+  if (result.error) {
+    setPanelMessage(root, result.error.message || 'Unable to update membership.', 'error');
+    return;
+  }
+
+  state.memberships = state.memberships.map((item) => item.id === result.membership.id ? result.membership : item);
+  await refreshHistory(state);
+  renderMemberships(root, state);
+  setPanelMessage(root, action === 'suspend' ? 'Membership suspended.' : 'Membership reactivated.', 'success');
+}
+
+async function refreshHistory(state) {
+  const { history } = await listMembershipHistory(state.role === 'member' ? state.appContext?.user?.id : null, { appContext: state.appContext });
+  state.history = history || state.history;
+}
+
 function renderPlans(root, state) {
   const list = root.querySelector('[data-plan-list]');
   const count = root.querySelector('[data-plan-count]');
@@ -336,12 +449,26 @@ function renderMemberships(root, state) {
     return;
   }
 
+  const currentByUser = new Map();
+  state.memberships.forEach((membership) => {
+    if (membership.status === MEMBERSHIP_STATUSES.ACTIVE && !currentByUser.has(membership.user_id)) {
+      currentByUser.set(membership.user_id, membership.id);
+    }
+  });
+
   list.innerHTML = state.memberships.map((membership) => {
     const user = state.users.find((item) => item.id === membership.user_id);
     const plan = membership.plan || {};
     const window = plan.duration_type
-      ? calculateRenewalWindow([membership], plan)
+      ? calculateRenewalWindow(state.memberships.filter((item) => item.user_id === membership.user_id), plan)
       : null;
+    const daysRemaining = getDaysUntilExpiry(membership);
+    const expiringSoon = isMembershipExpiringSoon(membership);
+    const history = state.history.filter((item) => item.membership_id === membership.id).slice(0, 3);
+    const showAdminActions = state.role === 'admin';
+    const canSuspend = showAdminActions && [MEMBERSHIP_STATUSES.ACTIVE, MEMBERSHIP_STATUSES.PENDING].includes(membership.status);
+    const canReactivate = showAdminActions && membership.status === MEMBERSHIP_STATUSES.SUSPENDED;
+    const isCurrent = currentByUser.get(membership.user_id) === membership.id;
 
     return `
       <article class="membership-record-card">
@@ -350,7 +477,13 @@ function renderMemberships(root, state) {
             <h3>${escapeHtml(user?.fullname || membership.type || 'Membership')}</h3>
             <p>${escapeHtml(plan.name || membership.type || 'Legacy membership')}</p>
           </div>
-          <span class="status-pill" data-state="${statusState(membership.status)}">${escapeHtml(membership.status)}</span>
+          <span class="status-pill" data-state="${statusState(membership.status)}">${escapeHtml(formatStatus(membership.status))}</span>
+        </div>
+        <div class="membership-badge-row">
+          ${isCurrent ? '<span class="expiry-badge" data-state="active">Current active</span>' : ''}
+          ${expiringSoon ? `<span class="expiry-badge" data-state="warning">Expires in ${escapeHtml(daysRemaining)} days</span>` : ''}
+          ${membership.status === MEMBERSHIP_STATUSES.EXPIRED ? '<span class="expiry-badge" data-state="inactive">Historical</span>' : ''}
+          ${membership.status === MEMBERSHIP_STATUSES.PENDING ? '<span class="expiry-badge" data-state="future">Upcoming renewal</span>' : ''}
         </div>
         <div class="user-card-meta">
           <span><strong>Start</strong>${escapeHtml(formatDate(membership.start_date))}</span>
@@ -358,9 +491,49 @@ function renderMemberships(root, state) {
           <span><strong>Renewals</strong>${escapeHtml(membership.renewal_count || 0)}</span>
           <span><strong>Next renewal</strong>${escapeHtml(window ? `${window.startDate} to ${window.endDate}` : 'Plan required')}</span>
         </div>
+        ${history.length ? `
+          <div class="membership-history-list" aria-label="Recent membership history">
+            ${history.map((item) => `
+              <span><strong>${escapeHtml(formatHistoryAction(item.action))}</strong>${escapeHtml(formatDate(item.created_at))}</span>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${showAdminActions ? `
+          <div class="user-actions">
+            <button class="button button-secondary button-compact" type="button" data-renew-membership="${escapeHtml(membership.id)}">Renew</button>
+            <button class="button button-secondary button-compact" type="button" data-suspend-membership="${escapeHtml(membership.id)}"${canSuspend ? '' : ' disabled'}>Suspend</button>
+            <button class="button button-secondary button-compact" type="button" data-reactivate-membership="${escapeHtml(membership.id)}"${canReactivate ? '' : ' disabled'}>Reactivate</button>
+          </div>
+        ` : ''}
       </article>
     `;
   }).join('');
+}
+
+function openRenewalModal(modal, form, state, membershipId) {
+  const membership = state.memberships.find((item) => item.id === membershipId);
+  if (!modal || !form || !membership) {
+    return;
+  }
+
+  const user = state.users.find((item) => item.id === membership.user_id);
+  const activePlans = state.plans.filter((plan) => plan.active);
+  form.reset();
+  form.elements.user_id.value = membership.user_id;
+  form.querySelector('[data-renewal-summary]').innerHTML = `
+    <strong>${escapeHtml(user?.fullname || membership.type || 'Member')}</strong>
+    <span>${escapeHtml(formatDate(membership.start_date))} to ${escapeHtml(formatDate(membership.end_date))}</span>
+  `;
+  form.querySelector('[data-renewal-plan]').innerHTML = activePlans.length
+    ? activePlans.map((plan) => `<option value="${escapeHtml(plan.id)}"${plan.id === membership.membership_plan_id ? ' selected' : ''}>${escapeHtml(plan.name)} (${escapeHtml(plan.duration_days)} days)</option>`).join('')
+    : '<option value="">No active plans available</option>';
+  setInlineMessage(form.querySelector('[data-renewal-message]'), '', '');
+  modal.hidden = false;
+  form.querySelector('[data-renewal-plan]')?.focus({ preventScroll: true });
+}
+
+function closeRenewalModal(modal) {
+  modal.hidden = true;
 }
 
 function openPlanModal(modal, form, state, plan = null) {
@@ -462,6 +635,14 @@ function statusState(status) {
   }
 
   return 'future';
+}
+
+function formatStatus(status) {
+  return String(status || '').replace(/_/g, ' ');
+}
+
+function formatHistoryAction(action) {
+  return String(action || '').replace(/_/g, ' ');
 }
 
 function formatMoney(value) {

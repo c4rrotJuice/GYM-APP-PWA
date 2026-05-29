@@ -4,8 +4,11 @@ import {
   MEMBERSHIP_STATUSES,
   calculateMembershipEndDate,
   calculateRenewalWindow,
+  getDaysUntilExpiry,
+  isMembershipExpiringSoon,
   normalizeDurationDays,
   normalizeDurationType,
+  resolveActiveMembership,
   resolveMembershipStatus
 } from './membership-logic.js';
 
@@ -44,12 +47,28 @@ const MEMBERSHIP_COLUMNS = [
   'membership_plans(name, duration_type, duration_days, price)'
 ].join(', ');
 
+const HISTORY_COLUMNS = [
+  'id',
+  'gym_id',
+  'membership_id',
+  'user_id',
+  'action',
+  'old_status',
+  'new_status',
+  'details',
+  'created_by',
+  'created_at'
+].join(', ');
+
 export {
   MEMBERSHIP_DURATION_TYPES,
   MEMBERSHIP_STATUSES,
   calculateMembershipEndDate,
   calculateRenewalWindow,
+  getDaysUntilExpiry,
+  isMembershipExpiringSoon,
   normalizeDurationDays,
+  resolveActiveMembership,
   resolveMembershipStatus
 };
 
@@ -185,10 +204,104 @@ export async function assignMembershipPlanToUser({ userId, planId, appContext } 
   }
 }
 
+export async function suspendMembership(membershipId, { reason = '', appContext } = {}) {
+  try {
+    const queryContext = await createQueryContext(appContext, { action: 'memberships:suspend' });
+    const gymId = requireGymId(queryContext.gymId);
+
+    if (!membershipId) {
+      throw new Error('Choose a membership to suspend.');
+    }
+
+    const { data, error } = await queryContext.supabase.rpc('suspend_membership', {
+      target_membership_id: membershipId,
+      reason: String(reason || '').trim() || null
+    });
+
+    if (error) {
+      return { membership: null, error };
+    }
+
+    const { data: membership, error: fetchError } = await scopedSelect(
+      queryContext.supabase,
+      'memberships',
+      MEMBERSHIP_COLUMNS,
+      { gymId }
+    )
+      .eq('id', data.id)
+      .single();
+
+    return { membership: normalizeMembership(membership || data), error: fetchError };
+  } catch (error) {
+    return { membership: null, error };
+  }
+}
+
+export async function reactivateMembership(membershipId, { appContext } = {}) {
+  try {
+    const queryContext = await createQueryContext(appContext, { action: 'memberships:reactivate' });
+    const gymId = requireGymId(queryContext.gymId);
+
+    if (!membershipId) {
+      throw new Error('Choose a membership to reactivate.');
+    }
+
+    const { data, error } = await queryContext.supabase.rpc('reactivate_membership', {
+      target_membership_id: membershipId
+    });
+
+    if (error) {
+      return { membership: null, error };
+    }
+
+    const { data: membership, error: fetchError } = await scopedSelect(
+      queryContext.supabase,
+      'memberships',
+      MEMBERSHIP_COLUMNS,
+      { gymId }
+    )
+      .eq('id', data.id)
+      .single();
+
+    return { membership: normalizeMembership(membership || data), error: fetchError };
+  } catch (error) {
+    return { membership: null, error };
+  }
+}
+
+export async function listMembershipHistory(userId, { appContext } = {}) {
+  try {
+    const queryContext = await createQueryContext(appContext, { action: 'membership_history:list' });
+    const gymId = requireGymId(queryContext.gymId);
+    let query = scopedSelect(queryContext.supabase, 'membership_history', HISTORY_COLUMNS, { gymId })
+      .order('created_at', { ascending: false });
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+    return { history: error ? [] : (data || []), error };
+  } catch (error) {
+    return { history: [], error };
+  }
+}
+
+export async function listExpiringMemberships({ appContext, windowDays = 7 } = {}) {
+  try {
+    const queryContext = await createQueryContext(appContext, { action: 'memberships:list' });
+    const { data, error } = await queryContext.supabase.rpc('memberships_expiring_soon', {
+      window_days: windowDays
+    });
+
+    return { memberships: error ? [] : (data || []).map(normalizeMembership), error };
+  } catch (error) {
+    return { memberships: [], error };
+  }
+}
+
 export function getCurrentMembership(memberships = []) {
-  return memberships
-    .filter((membership) => resolveMembershipStatus(membership) === MEMBERSHIP_STATUSES.ACTIVE)
-    .sort((left, right) => new Date(right.end_date) - new Date(left.end_date))[0] || null;
+  return resolveActiveMembership(memberships);
 }
 
 function normalizePlanPayload(payload) {

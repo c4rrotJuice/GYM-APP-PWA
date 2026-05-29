@@ -14,9 +14,9 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
 
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$TEST_FILE"
 elif command -v supabase >/dev/null 2>&1; then
-  supabase db query --local --file "$TEST_FILE"
+  supabase db query --linked --file "$TEST_FILE"
 else
-  echo "FAIL - install psql and set DATABASE_URL, or install the Supabase CLI for local execution."
+  echo "FAIL - install psql and set DATABASE_URL, or install the Supabase CLI for linked project execution."
   exit 1
 fi
 

@@ -5,6 +5,7 @@ const TENANT_SCOPED_TABLES = new Set([
   'users',
   'membership_plans',
   'memberships',
+  'membership_history',
   'attendance_qr_tokens',
   'attendance_logs',
   'payments',

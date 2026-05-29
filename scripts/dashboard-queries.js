@@ -1,12 +1,17 @@
 import { listUsers } from './profiles.js';
 import {
+  getCurrentMembership,
+  listExpiringMemberships,
+  listUserMemberships
+} from './memberships.js';
+import {
   countScopedRows,
   getMemberOperationalProfile,
   getTrainerAssignedMembers
 } from './role-queries.js';
 
 export async function getAdminDashboardData({ appContext } = {}) {
-  const [usersResult, membershipResult, attendanceResult, workoutResult] = await Promise.all([
+  const [usersResult, membershipResult, expiringResult, attendanceResult, workoutResult] = await Promise.all([
     listUsers({ appContext }),
     countScopedRows('memberships', {
       appContext,
@@ -15,6 +20,7 @@ export async function getAdminDashboardData({ appContext } = {}) {
         { column: 'end_date', operator: 'gte', value: new Date().toISOString().slice(0, 10) }
       ]
     }),
+    listExpiringMemberships({ appContext, windowDays: 7 }),
     countScopedRows('attendance_logs', { appContext }),
     countScopedRows('workout_programs', { appContext })
   ]);
@@ -37,8 +43,12 @@ export async function getAdminDashboardData({ appContext } = {}) {
         totalMembers: users.filter((user) => user.role === 'member').length,
         totalTrainers: users.filter((user) => user.role === 'trainer').length,
         activeMemberships: membershipResult.count,
+        expiringSoon: expiringResult.error ? null : expiringResult.memberships.length,
         attendanceLogs: attendanceResult.error ? null : attendanceResult.count,
         workoutPrograms: workoutResult.error ? null : workoutResult.count
+      },
+      memberships: {
+        expiringSoon: expiringResult.memberships || []
       },
       gym: buildGymSnapshot(appContext, users)
     },
@@ -73,12 +83,13 @@ export async function getTrainerDashboardData({ appContext } = {}) {
 }
 
 export async function getMemberDashboardData({ appContext } = {}) {
-  const [profileResult, membershipResult, attendanceResult, workoutResult, progressResult] = await Promise.all([
+  const [profileResult, membershipResult, membershipsResult, attendanceResult, workoutResult, progressResult] = await Promise.all([
     getMemberOperationalProfile({ appContext }),
     countScopedRows('memberships', {
       appContext,
       filters: [{ column: 'user_id', value: appContext?.user?.id }]
     }),
+    listUserMemberships(appContext?.user?.id, { appContext }),
     countScopedRows('attendance_logs', {
       appContext,
       filters: [{ column: 'user_id', value: appContext?.user?.id }]
@@ -106,6 +117,10 @@ export async function getMemberDashboardData({ appContext } = {}) {
         attendanceLogs: attendanceResult.error ? null : attendanceResult.count,
         workouts: workoutResult.error ? null : workoutResult.count,
         progressLogs: progressResult.error ? null : progressResult.count
+      },
+      membership: {
+        current: getCurrentMembership(membershipsResult.memberships || []),
+        records: membershipsResult.memberships || []
       }
     },
     error: null

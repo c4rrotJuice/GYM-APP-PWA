@@ -10,7 +10,10 @@ await copyFile(new URL('../scripts/membership-logic.js', import.meta.url), modul
 const {
   calculateMembershipEndDate,
   calculateRenewalWindow,
+  getDaysUntilExpiry,
+  isMembershipExpiringSoon,
   normalizeDurationDays,
+  resolveActiveMembership,
   resolveMembershipStatus
 } = await import(modulePath);
 
@@ -56,6 +59,20 @@ assert.deepEqual(
 
 assert.deepEqual(
   calculateRenewalWindow([
+    { id: 'current', status: 'active', start_date: '2026-05-01', end_date: '2026-05-31' },
+    { id: 'pending', status: 'pending', start_date: '2026-06-01', end_date: '2026-06-08' }
+  ], { duration_type: 'weekly', duration_days: 7 }, { asOf: '2026-05-29' }),
+  {
+    mode: 'extend',
+    renewedMembershipId: 'pending',
+    startDate: '2026-06-09',
+    endDate: '2026-06-16'
+  },
+  'repeat renewal appends after the latest active or pending window'
+);
+
+assert.deepEqual(
+  calculateRenewalWindow([
     { id: 'expired', status: 'active', start_date: '2026-04-01', end_date: '2026-04-30' }
   ], { duration_type: 'weekly', duration_days: 7 }, { asOf: '2026-05-29' }),
   {
@@ -65,6 +82,28 @@ assert.deepEqual(
     endDate: '2026-06-05'
   },
   'renewing after expiry starts today'
+);
+
+assert.equal(
+  resolveActiveMembership([
+    { id: 'expired', status: 'active', start_date: '2026-04-01', end_date: '2026-04-30' },
+    { id: 'current', status: 'active', start_date: '2026-05-01', end_date: '2026-05-31' },
+    { id: 'future', status: 'pending', start_date: '2026-06-01', end_date: '2026-06-08' }
+  ], { asOf: '2026-05-29' }).id,
+  'current',
+  'active membership resolver ignores expired and future records'
+);
+
+assert.equal(
+  getDaysUntilExpiry({ end_date: '2026-06-02' }, { asOf: '2026-05-29' }),
+  4,
+  'expiry utility calculates days remaining'
+);
+
+assert.equal(
+  isMembershipExpiringSoon({ status: 'active', start_date: '2026-05-01', end_date: '2026-06-02' }, { asOf: '2026-05-29', windowDays: 7 }),
+  true,
+  'expiry warning utility flags active records inside the warning window'
 );
 
 console.log('PASS - membership duration, expiry, renewal, and status tests');

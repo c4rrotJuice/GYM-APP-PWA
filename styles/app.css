@@ -702,6 +702,70 @@
   gap: 12px;
 }
 
+.membership-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.expiry-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #f8fafc;
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.expiry-badge[data-state="active"] {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.expiry-badge[data-state="warning"] {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.expiry-badge[data-state="inactive"] {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.expiry-badge[data-state="future"] {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.membership-history-list,
+.membership-renewal-summary {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #f8fafc;
+  color: var(--color-muted);
+  font-size: 0.86rem;
+}
+
+.membership-history-list span,
+.membership-renewal-summary span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.membership-history-list strong,
+.membership-renewal-summary strong {
+  color: var(--color-ink);
+  text-transform: capitalize;
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;

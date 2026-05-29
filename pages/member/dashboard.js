@@ -2,7 +2,9 @@ import { loadDashboardBootstrap } from '../../scripts/dashboard-bootstrap.js';
 import {
   createDashboardSection,
   createDashboardShell,
-  createMetricGrid
+  createKeyValueList,
+  createMetricGrid,
+  formatDate
 } from '../../scripts/dashboard-layout.js';
 import {
   createFutureModuleSlots,
@@ -51,6 +53,7 @@ export async function initMemberDashboardPage({ target, appContext }) {
 
 function renderMemberDashboard(data) {
   const profile = data.profile || null;
+  const currentMembership = data.membership?.current || null;
 
   return `
     ${createMetricGrid([
@@ -75,6 +78,17 @@ function renderMemberDashboard(data) {
         body: createMemberFutureActions()
       })}
     </div>
+
+    ${createDashboardSection({
+      title: 'Membership Profile',
+      description: currentMembership ? 'Current active membership resolved from membership history.' : 'No active membership is currently resolved.',
+      body: createKeyValueList([
+        ['Status', currentMembership?.status || 'No active membership'],
+        ['Plan', currentMembership?.plan?.name || currentMembership?.type || 'Not assigned'],
+        ['Start', currentMembership ? formatDate(currentMembership.start_date) : 'Not assigned'],
+        ['End', currentMembership ? formatDate(currentMembership.end_date) : 'Not assigned']
+      ])
+    })}
 
     ${createDashboardSection({
       title: 'Future Module Slots',

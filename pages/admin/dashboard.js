@@ -75,7 +75,8 @@ function renderAdminDashboard(data) {
       { label: 'Total users', value: data.totals.totalUsers, detail: 'Profiles in this gym' },
       { label: 'Members', value: data.totals.totalMembers, detail: 'Member accounts' },
       { label: 'Trainers', value: data.totals.totalTrainers, detail: 'Trainer accounts' },
-      { label: 'Active memberships', value: data.totals.activeMemberships, detail: 'Phase 3 management-ready' }
+      { label: 'Active memberships', value: data.totals.activeMemberships, detail: 'Currently active records' },
+      { label: 'Expiring soon', value: data.totals.expiringSoon, detail: 'Ending within 7 days' }
     ], { label: 'Admin dashboard metrics' })}
 
     <div class="dashboard-grid dashboard-grid-wide">
@@ -101,6 +102,20 @@ function renderAdminDashboard(data) {
     </div>
 
     ${createDashboardSection({
+      title: 'Membership Expiry Watch',
+      description: 'Active memberships ending within the next 7 days.',
+      body: createCompactList((data.memberships?.expiringSoon || []).slice(0, 5).map((membership) => ({
+        title: membership.type || 'Membership',
+        description: `Ends ${formatDate(membership.end_date)} - ${membership.days_remaining} days remaining`,
+        badge: 'Expiring',
+        state: 'future'
+      })), {
+        emptyTitle: 'No urgent expiries',
+        emptyDescription: 'No active memberships are inside the 7-day expiry window.'
+      })
+    })}
+
+    ${createDashboardSection({
       title: 'Recent User Statistics',
       description: users.length ? 'Newest visible profile activity from the user directory.' : 'No visible users are available yet.',
       body: createCompactList(recentUsers, {
@@ -116,7 +131,8 @@ function getLoadingMetrics() {
     { label: 'Total users', value: '...' },
     { label: 'Members', value: '...' },
     { label: 'Trainers', value: '...' },
-    { label: 'Active memberships', value: '...' }
+    { label: 'Active memberships', value: '...' },
+    { label: 'Expiring soon', value: '...' }
   ];
 }
 

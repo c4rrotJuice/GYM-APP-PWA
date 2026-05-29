@@ -92,10 +92,40 @@ export function findCurrentRenewableMembership(memberships = [], { asOf = new Da
 
   return memberships
     .filter((membership) => (
-      resolveMembershipStatus(membership, { asOf: today }) === MEMBERSHIP_STATUSES.ACTIVE &&
+      [MEMBERSHIP_STATUSES.ACTIVE, MEMBERSHIP_STATUSES.PENDING].includes(resolveMembershipStatus(membership, { asOf: today })) &&
       parseDateOnly(membership.end_date) >= today
     ))
     .sort((left, right) => parseDateOnly(right.end_date) - parseDateOnly(left.end_date))[0] || null;
+}
+
+export function resolveActiveMembership(memberships = [], { asOf = new Date() } = {}) {
+  const today = parseDateOnly(asOf);
+
+  return memberships
+    .filter((membership) => (
+      resolveMembershipStatus(membership, { asOf: today }) === MEMBERSHIP_STATUSES.ACTIVE
+    ))
+    .sort((left, right) => parseDateOnly(right.end_date) - parseDateOnly(left.end_date))[0] || null;
+}
+
+export function getDaysUntilExpiry(membership, { asOf = new Date() } = {}) {
+  if (!membership?.end_date) {
+    return null;
+  }
+
+  const today = parseDateOnly(asOf);
+  const endDate = parseDateOnly(membership.end_date);
+  return Math.ceil((endDate - today) / 86400000);
+}
+
+export function isMembershipExpiringSoon(membership, { asOf = new Date(), windowDays = 7 } = {}) {
+  const daysRemaining = getDaysUntilExpiry(membership, { asOf });
+  return (
+    resolveMembershipStatus(membership, { asOf }) === MEMBERSHIP_STATUSES.ACTIVE &&
+    daysRemaining !== null &&
+    daysRemaining >= 0 &&
+    daysRemaining <= windowDays
+  );
 }
 
 export function toDateOnly(value) {
