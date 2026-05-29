@@ -1,6 +1,7 @@
 import { getAdminDashboardData, getMemberDashboardData, getTrainerDashboardData } from './dashboard-queries.js';
 
 const dashboardCache = new Map();
+const DASHBOARD_CACHE_TTL_MS = 30 * 1000;
 
 const LOADERS = Object.freeze({
   admin: getAdminDashboardData,
@@ -23,22 +24,22 @@ export async function loadDashboardBootstrap({ appContext, force = false } = {})
     return cached.promise;
   }
 
-  if (!force && cached?.data) {
+  if (!force && cached?.data && cached.expiresAt > Date.now()) {
     return cached.data;
   }
 
   const promise = loader({ appContext })
     .then((result) => {
-      dashboardCache.set(cacheKey, { data: result, promise: null });
+      dashboardCache.set(cacheKey, { data: result, promise: null, expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS });
       return result;
     })
     .catch((error) => {
       const result = { data: null, error };
-      dashboardCache.set(cacheKey, { data: result, promise: null });
+      dashboardCache.set(cacheKey, { data: result, promise: null, expiresAt: Date.now() + 5000 });
       return result;
     });
 
-  dashboardCache.set(cacheKey, { data: null, promise });
+  dashboardCache.set(cacheKey, { data: null, promise, expiresAt: 0 });
   return promise;
 }
 

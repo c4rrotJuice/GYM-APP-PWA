@@ -23,6 +23,7 @@ import {
   recordMembershipPayment
 } from '../../scripts/payments.js';
 import { listUsers } from '../../scripts/profiles.js';
+import { clearDashboardBootstrapCache } from '../../scripts/dashboard-bootstrap.js';
 import { escapeHtml, formatDate } from '../../scripts/dashboard-layout.js';
 
 const DURATION_LABELS = Object.freeze({
@@ -454,6 +455,7 @@ async function handlePlanSubmit(event, root, modal, form, state) {
     state.plans = state.plans.some((item) => item.id === plan.id)
       ? state.plans.map((item) => item.id === plan.id ? plan : item)
       : [plan, ...state.plans];
+    clearDashboardBootstrapCache(state.appContext);
     renderPlans(root, state);
     closePlanModal(modal);
     setPanelMessage(root, 'Plan saved.', 'success');
@@ -474,6 +476,7 @@ async function deactivatePlan(root, state, planId) {
   }
 
   state.plans = state.plans.map((item) => item.id === plan.id ? plan : item);
+  clearDashboardBootstrapCache(state.appContext);
   renderPlans(root, state);
   setPanelMessage(root, 'Plan deactivated.', 'success');
 }
@@ -504,6 +507,7 @@ async function handleAssignmentSubmit(event, assignmentRoot, recordsRoot, state)
   state.memberships = state.memberships.some((item) => item.id === membership.id)
     ? state.memberships.map((item) => item.id === membership.id ? membership : item)
     : [membership, ...state.memberships];
+  clearDashboardBootstrapCache(state.appContext);
   renderMemberships(recordsRoot, state);
   setInlineMessage(message, 'Membership assigned.', 'success');
 }
@@ -538,6 +542,7 @@ async function handlePaymentSubmit(event, paymentRoot, recordsRoot, paymentHisto
   state.history = historyResult.history || state.history;
   state.financialSummary = summaryResult.summary || state.financialSummary;
   state.balances = balancesResult.balances || state.balances;
+  clearDashboardBootstrapCache(state.appContext);
 
   renderMemberships(recordsRoot, state);
   renderPaymentHistory(paymentHistoryRoot, state);
@@ -573,6 +578,7 @@ async function handleRenewalSubmit(event, recordsRoot, modal, form, state) {
 
   state.memberships = [membership, ...state.memberships.filter((item) => item.id !== membership.id)];
   await refreshHistory(state);
+  clearDashboardBootstrapCache(state.appContext);
   renderMemberships(recordsRoot, state);
   closeRenewalModal(modal);
   setPanelMessage(recordsRoot, 'Membership renewed.', 'success');
@@ -591,6 +597,7 @@ async function updateSuspensionState(root, state, membershipId, action) {
 
   state.memberships = state.memberships.map((item) => item.id === result.membership.id ? result.membership : item);
   await refreshHistory(state);
+  clearDashboardBootstrapCache(state.appContext);
   renderMemberships(root, state);
   setPanelMessage(root, action === 'suspend' ? 'Membership suspended.' : 'Membership reactivated.', 'success');
 }
@@ -635,6 +642,7 @@ function renderPlans(root, state) {
 function renderAssignmentForm(root, state) {
   const memberSelect = root.querySelector('[data-assignment-member]');
   const planSelect = root.querySelector('[data-assignment-plan]');
+  const submit = root.querySelector('[data-assignment-submit]');
   const activePlans = state.plans.filter((plan) => plan.active);
 
   memberSelect.innerHTML = state.users.length
@@ -644,11 +652,16 @@ function renderAssignmentForm(root, state) {
   planSelect.innerHTML = activePlans.length
     ? activePlans.map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.name)} (${escapeHtml(plan.duration_days)} days)</option>`).join('')
     : '<option value="">No active plans available</option>';
+
+  if (submit) {
+    submit.disabled = !state.users.length || !activePlans.length;
+  }
 }
 
 function renderPaymentForm(root, state) {
   const memberSelect = root.querySelector('[data-payment-member]');
   const planSelect = root.querySelector('[data-payment-plan]');
+  const submit = root.querySelector('[data-payment-submit]');
   const activePlans = state.plans.filter((plan) => plan.active);
 
   memberSelect.innerHTML = state.users.length
@@ -662,6 +675,10 @@ function renderPaymentForm(root, state) {
   const method = root.querySelector('[data-payment-method]');
   if (method) {
     method.value = PAYMENT_METHODS.CASH;
+  }
+
+  if (submit) {
+    submit.disabled = !state.users.length || !activePlans.length;
   }
 
   syncPaymentAmount(root, state);

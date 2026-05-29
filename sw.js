@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gym-pwa-shell-v19';
+const CACHE_VERSION = 'gym-pwa-shell';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
@@ -75,7 +75,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys
-        .filter((key) => ![STATIC_CACHE, RUNTIME_CACHE, DYNAMIC_CACHE].includes(key))
+        .filter((key) => key.startsWith('gym-pwa-shell') && ![STATIC_CACHE, RUNTIME_CACHE, DYNAMIC_CACHE].includes(key))
         .map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );

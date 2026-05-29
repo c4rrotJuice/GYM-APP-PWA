@@ -25,6 +25,11 @@ assert.equal(normalizeDurationDays('monthly'), 30, 'monthly duration resolves to
 assert.equal(normalizeDurationDays('custom', 45), 45, 'custom duration uses provided days');
 assert.equal(calculateMembershipEndDate('2026-05-29', 'weekly'), '2026-06-05', 'weekly expiry is deterministic');
 assert.equal(calculateMembershipEndDate('2026-05-29', 'monthly'), '2026-06-28', 'monthly expiry is deterministic');
+assert.throws(
+  () => calculateMembershipEndDate('2026-02-31', 'weekly'),
+  /valid date/,
+  'invalid calendar dates are rejected instead of overflowing'
+);
 
 assert.equal(
   resolveMembershipStatus({ status: 'active', start_date: '2026-05-01', end_date: '2026-05-28' }, { asOf: '2026-05-29' }),

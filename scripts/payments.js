@@ -120,6 +120,7 @@ export async function listOutstandingBalances({ appContext } = {}) {
 function normalizePaymentPayload(payload) {
   const amount = normalizeMoney(payload?.amount);
   const status = normalizePaymentStatus(payload?.status);
+  const method = normalizePaymentMethod(payload?.method);
 
   if (!payload?.user_id) {
     throw new Error('Choose a member for this payment.');
@@ -133,11 +134,23 @@ function normalizePaymentPayload(payload) {
     throw new Error('Payment amount must be greater than zero.');
   }
 
+  if (payload?.method && method !== String(payload.method).trim().toLowerCase()) {
+    throw new Error('Choose a supported payment method.');
+  }
+
+  if (payload?.status && status !== String(payload.status).trim().toLowerCase()) {
+    throw new Error('Choose a supported payment status.');
+  }
+
+  if (payload?.external_provider && !payload?.reference && !payload?.external_transaction_id) {
+    throw new Error('Add a provider reference or transaction ID for external payments.');
+  }
+
   return {
     user_id: String(payload.user_id),
     plan_id: String(payload.plan_id),
     amount,
-    method: normalizePaymentMethod(payload?.method),
+    method,
     reference: String(payload?.reference || '').trim() || null,
     status,
     notes: String(payload?.notes || '').trim() || null,
