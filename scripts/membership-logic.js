@@ -12,6 +12,8 @@ export const MEMBERSHIP_STATUSES = Object.freeze({
   CANCELLED: 'cancelled'
 });
 
+export const DEFAULT_EXPIRY_WARNING_DAYS = 7;
+
 const FIXED_DURATIONS = Object.freeze({
   [MEMBERSHIP_DURATION_TYPES.WEEKLY]: 7,
   [MEMBERSHIP_DURATION_TYPES.MONTHLY]: 30
@@ -72,6 +74,42 @@ export function resolveMembershipStatus(membership, { asOf = new Date() } = {}) 
   return MEMBERSHIP_STATUSES.ACTIVE;
 }
 
+export function buildMembershipOperationalState(membership, { asOf = new Date(), windowDays = DEFAULT_EXPIRY_WARNING_DAYS } = {}) {
+  const status = resolveMembershipStatus(membership, { asOf });
+  const daysRemaining = getDaysUntilExpiry(membership, { asOf });
+
+  return {
+    status,
+    daysRemaining,
+    expiringSoon: status === MEMBERSHIP_STATUSES.ACTIVE &&
+      daysRemaining !== null &&
+      daysRemaining >= 0 &&
+      daysRemaining <= windowDays,
+    canAttend: status === MEMBERSHIP_STATUSES.ACTIVE &&
+      daysRemaining !== null &&
+      daysRemaining >= 0
+  };
+}
+
+export function recalculateMembershipStates(memberships = [], { asOf = new Date(), windowDays = DEFAULT_EXPIRY_WARNING_DAYS } = {}) {
+  const recalculated = memberships.map((membership) => {
+    const state = buildMembershipOperationalState(membership, { asOf, windowDays });
+    return {
+      ...membership,
+      status: state.status,
+      days_remaining: state.daysRemaining,
+      expiring_soon: state.expiringSoon,
+      can_attend: state.canAttend
+    };
+  });
+
+  return {
+    memberships: recalculated,
+    summary: summarizeMembershipStates(recalculated),
+    notificationTriggers: prepareExpiryNotificationTriggers(recalculated, { asOf, windowDays })
+  };
+}
+
 export function calculateRenewalWindow(existingMemberships = [], plan, { asOf = new Date() } = {}) {
   const today = toDateOnly(parseDateOnly(asOf));
   const current = findCurrentRenewableMembership(existingMemberships, { asOf: today });
@@ -108,6 +146,13 @@ export function resolveActiveMembership(memberships = [], { asOf = new Date() } 
     .sort((left, right) => parseDateOnly(right.end_date) - parseDateOnly(left.end_date))[0] || null;
 }
 
+export function canAttendGym(membershipOrMemberships, { asOf = new Date() } = {}) {
+  const membership = Array.isArray(membershipOrMemberships)
+    ? resolveActiveMembership(membershipOrMemberships, { asOf })
+    : membershipOrMemberships;
+  return buildMembershipOperationalState(membership, { asOf }).canAttend;
+}
+
 export function getDaysUntilExpiry(membership, { asOf = new Date() } = {}) {
   if (!membership?.end_date) {
     return null;
@@ -119,13 +164,13 @@ export function getDaysUntilExpiry(membership, { asOf = new Date() } = {}) {
 }
 
 export function isMembershipExpiringSoon(membership, { asOf = new Date(), windowDays = 7 } = {}) {
-  const daysRemaining = getDaysUntilExpiry(membership, { asOf });
-  return (
-    resolveMembershipStatus(membership, { asOf }) === MEMBERSHIP_STATUSES.ACTIVE &&
-    daysRemaining !== null &&
-    daysRemaining >= 0 &&
-    daysRemaining <= windowDays
-  );
+  return buildMembershipOperationalState(membership, { asOf, windowDays }).expiringSoon;
+}
+
+export function listExpiringSoonMemberships(memberships = [], { asOf = new Date(), windowDays = DEFAULT_EXPIRY_WARNING_DAYS } = {}) {
+  return memberships
+    .filter((membership) => isMembershipExpiringSoon(membership, { asOf, windowDays }))
+    .sort((left, right) => parseDateOnly(left.end_date) - parseDateOnly(right.end_date));
 }
 
 export function toDateOnly(value) {
@@ -136,6 +181,63 @@ function addDays(value, days) {
   const date = parseDateOnly(value);
   date.setUTCDate(date.getUTCDate() + days);
   return toDateOnly(date);
+}
+
+function summarizeMembershipStates(memberships = []) {
+  return memberships.reduce((summary, membership) => {
+    const status = String(membership?.status || MEMBERSHIP_STATUSES.PENDING).toLowerCase();
+    summary.total += 1;
+    summary[status] = (summary[status] || 0) + 1;
+
+    if (membership?.can_attend) {
+      summary.attendanceReady += 1;
+    }
+
+    if (membership?.expiring_soon) {
+      summary.expiringSoon += 1;
+    }
+
+    return summary;
+  }, {
+    total: 0,
+    active: 0,
+    expired: 0,
+    suspended: 0,
+    pending: 0,
+    cancelled: 0,
+    expiringSoon: 0,
+    attendanceReady: 0
+  });
+}
+
+function prepareExpiryNotificationTriggers(memberships = [], { asOf = new Date(), windowDays = DEFAULT_EXPIRY_WARNING_DAYS } = {}) {
+  const asOfDate = toDateOnly(asOf);
+
+  return memberships.flatMap((membership) => {
+    const state = buildMembershipOperationalState(membership, { asOf, windowDays });
+
+    if (state.expiringSoon) {
+      return [{
+        type: 'membership_expiring_soon',
+        membershipId: membership.id || null,
+        userId: membership.user_id || null,
+        asOf: asOfDate,
+        daysRemaining: state.daysRemaining
+      }];
+    }
+
+    if (state.status === MEMBERSHIP_STATUSES.EXPIRED) {
+      return [{
+        type: 'membership_expired',
+        membershipId: membership.id || null,
+        userId: membership.user_id || null,
+        asOf: asOfDate,
+        daysRemaining: state.daysRemaining
+      }];
+    }
+
+    return [];
+  });
 }
 
 function parseDateOnly(value) {

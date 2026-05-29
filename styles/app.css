@@ -199,6 +199,21 @@
   font-weight: 700;
 }
 
+.metric-card[data-state="active"] {
+  border-color: rgba(22, 101, 52, 0.24);
+  background: linear-gradient(145deg, #ffffff, #f0fdf4);
+}
+
+.metric-card[data-state="warning"] {
+  border-color: rgba(154, 52, 18, 0.24);
+  background: linear-gradient(145deg, #ffffff, #fff7ed);
+}
+
+.metric-card[data-state="inactive"] {
+  border-color: rgba(153, 27, 27, 0.22);
+  background: linear-gradient(145deg, #ffffff, #fef2f2);
+}
+
 .panel {
   display: grid;
   gap: 12px;
@@ -491,6 +506,11 @@
 .status-pill[data-state="future"] {
   background: #fef3c7;
   color: #92400e;
+}
+
+.status-pill[data-state="warning"] {
+  background: #ffedd5;
+  color: #9a3412;
 }
 
 .role-pill {

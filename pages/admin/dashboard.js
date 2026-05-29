@@ -75,11 +75,14 @@ function renderAdminDashboard(data) {
       { label: 'Total users', value: data.totals.totalUsers, detail: 'Profiles in this gym' },
       { label: 'Members', value: data.totals.totalMembers, detail: 'Member accounts' },
       { label: 'Trainers', value: data.totals.totalTrainers, detail: 'Trainer accounts' },
-      { label: 'Active memberships', value: data.totals.activeMemberships, detail: 'Currently active records' },
+      { label: 'Active memberships', value: data.totals.activeMemberships, detail: 'Recalculated server state', state: 'active' },
+      { label: 'Attendance ready', value: data.totals.attendanceReady, detail: 'Eligible to check in today', state: 'active' },
       { label: 'Total revenue', value: formatMoney(data.totals.totalRevenue), detail: 'Completed payments' },
       { label: 'Monthly revenue', value: formatMoney(data.totals.monthlyRevenue), detail: 'Completed this month' },
       { label: 'Pending balances', value: formatMoney(data.totals.pendingBalances), detail: 'Outstanding or pending records', state: data.totals.pendingBalances > 0 ? 'warning' : 'active' },
-      { label: 'Expiring soon', value: data.totals.expiringSoon, detail: 'Ending within 7 days' }
+      { label: 'Expiring soon', value: data.totals.expiringSoon, detail: 'Ending within 7 days', state: data.totals.expiringSoon > 0 ? 'warning' : 'active' },
+      { label: 'Expired', value: data.totals.expiredMemberships, detail: 'Historical access blocked', state: data.totals.expiredMemberships > 0 ? 'inactive' : 'active' },
+      { label: 'Notification hooks', value: data.totals.notificationTriggersPrepared, detail: 'Prepared, not delivered', state: data.totals.notificationTriggersPrepared > 0 ? 'future' : '' }
     ], { label: 'Admin dashboard metrics' })}
 
     <div class="dashboard-grid dashboard-grid-wide">
@@ -120,16 +123,27 @@ function renderAdminDashboard(data) {
 
     ${createDashboardSection({
       title: 'Membership Expiry Watch',
-      description: 'Active memberships ending within the next 7 days.',
+      description: 'Server-recalculated membership access, renewal prompts, and notification hook readiness.',
       body: createCompactList((data.memberships?.expiringSoon || []).slice(0, 5).map((membership) => ({
         title: membership.type || 'Membership',
-        description: `Ends ${formatDate(membership.end_date)} - ${membership.days_remaining} days remaining`,
-        badge: 'Expiring',
-        state: 'future'
+        description: `Renew before ${formatDate(membership.end_date)} - ${membership.days_remaining} days remaining`,
+        badge: membership.days_remaining <= 1 ? 'Renew now' : 'Expiring',
+        state: membership.days_remaining <= 1 ? 'warning' : 'future'
       })), {
         emptyTitle: 'No urgent expiries',
         emptyDescription: 'No active memberships are inside the 7-day expiry window.'
       })
+    })}
+
+    ${createDashboardSection({
+      title: 'Expiry Operations',
+      description: 'Operational authority used by attendance validation and future reminders.',
+      body: createKeyValueList([
+        ['Active after recalculation', data.totals.activeMemberships],
+        ['Attendance-ready members', data.totals.attendanceReady],
+        ['Suspended excluded', data.totals.suspendedMemberships],
+        ['Prepared notification triggers', data.totals.notificationTriggersPrepared]
+      ])
     })}
 
     ${createDashboardSection({
@@ -149,6 +163,7 @@ function getLoadingMetrics() {
     { label: 'Members', value: '...' },
     { label: 'Trainers', value: '...' },
     { label: 'Active memberships', value: '...' },
+    { label: 'Attendance ready', value: '...' },
     { label: 'Expiring soon', value: '...' }
   ];
 }

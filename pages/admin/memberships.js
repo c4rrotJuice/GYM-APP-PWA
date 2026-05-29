@@ -9,6 +9,7 @@ import {
   listMembershipHistory,
   listMembershipPlans,
   listUserMemberships,
+  processMembershipExpiry,
   reactivateMembership,
   saveMembershipPlan,
   suspendMembership
@@ -314,6 +315,10 @@ async function loadMembershipWorkspace({ planRoot, recordsRoot, assignmentRoot, 
   setBusy(recordsRoot?.querySelector('[data-membership-list]'), true);
   setBusy(financeRoot?.querySelector('[data-finance-summary]'), true);
   setBusy(paymentHistoryRoot?.querySelector('[data-payment-list]'), true);
+
+  if (state.role === 'admin') {
+    await processMembershipExpiry({ appContext: state.appContext, windowDays: 7 });
+  }
 
   const [plansResult, usersResult, membershipsResult, historyResult, paymentsResult, summaryResult, balancesResult] = await Promise.all([
     state.role === 'admin' ? listMembershipPlans({ appContext: state.appContext }) : Promise.resolve({ plans: [], error: null }),

@@ -10,9 +10,12 @@ await copyFile(new URL('../scripts/membership-logic.js', import.meta.url), modul
 const {
   calculateMembershipEndDate,
   calculateRenewalWindow,
+  canAttendGym,
   getDaysUntilExpiry,
   isMembershipExpiringSoon,
+  listExpiringSoonMemberships,
   normalizeDurationDays,
+  recalculateMembershipStates,
   resolveActiveMembership,
   resolveMembershipStatus
 } = await import(modulePath);
@@ -104,6 +107,53 @@ assert.equal(
   isMembershipExpiringSoon({ status: 'active', start_date: '2026-05-01', end_date: '2026-06-02' }, { asOf: '2026-05-29', windowDays: 7 }),
   true,
   'expiry warning utility flags active records inside the warning window'
+);
+
+assert.equal(
+  canAttendGym({ status: 'active', start_date: '2026-05-01', end_date: '2026-06-02' }, { asOf: '2026-05-29' }),
+  true,
+  'attendance eligibility allows active in-window memberships'
+);
+
+assert.equal(
+  canAttendGym({ status: 'suspended', start_date: '2026-05-01', end_date: '2026-06-02' }, { asOf: '2026-05-29' }),
+  false,
+  'attendance eligibility excludes suspended memberships'
+);
+
+assert.equal(
+  canAttendGym({ status: 'active', start_date: '2026-05-01', end_date: '2026-05-28' }, { asOf: '2026-05-29' }),
+  false,
+  'attendance eligibility excludes expired memberships even when stored status is stale'
+);
+
+assert.deepEqual(
+  listExpiringSoonMemberships([
+    { id: 'later', status: 'active', start_date: '2026-05-01', end_date: '2026-06-03' },
+    { id: 'outside', status: 'active', start_date: '2026-05-01', end_date: '2026-06-20' },
+    { id: 'sooner', status: 'active', start_date: '2026-05-01', end_date: '2026-05-31' }
+  ], { asOf: '2026-05-29', windowDays: 7 }).map((membership) => membership.id),
+  ['sooner', 'later'],
+  'expiring soon helper returns active records inside the window ordered by expiry'
+);
+
+assert.deepEqual(
+  recalculateMembershipStates([
+    { id: 'stale-expired', user_id: 'member-1', status: 'active', start_date: '2026-05-01', end_date: '2026-05-28' },
+    { id: 'ready', user_id: 'member-2', status: 'pending', start_date: '2026-05-01', end_date: '2026-06-02' },
+    { id: 'blocked', user_id: 'member-3', status: 'suspended', start_date: '2026-05-01', end_date: '2026-06-02' }
+  ], { asOf: '2026-05-29', windowDays: 7 }).summary,
+  {
+    total: 3,
+    active: 1,
+    expired: 1,
+    suspended: 1,
+    pending: 0,
+    cancelled: 0,
+    expiringSoon: 1,
+    attendanceReady: 1
+  },
+  'status recalculation summarizes expired, active, suspended, expiring, and attendance-ready states'
 );
 
 console.log('PASS - membership duration, expiry, renewal, and status tests');

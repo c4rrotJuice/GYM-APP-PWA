@@ -2,12 +2,16 @@ import { createQueryContext, requireGymId, scopedInsert, scopedSelect, scopedUpd
 import {
   MEMBERSHIP_DURATION_TYPES,
   MEMBERSHIP_STATUSES,
+  buildMembershipOperationalState,
   calculateMembershipEndDate,
   calculateRenewalWindow,
+  canAttendGym,
   getDaysUntilExpiry,
   isMembershipExpiringSoon,
+  listExpiringSoonMemberships,
   normalizeDurationDays,
   normalizeDurationType,
+  recalculateMembershipStates,
   resolveActiveMembership,
   resolveMembershipStatus
 } from './membership-logic.js';
@@ -63,11 +67,15 @@ const HISTORY_COLUMNS = [
 export {
   MEMBERSHIP_DURATION_TYPES,
   MEMBERSHIP_STATUSES,
+  buildMembershipOperationalState,
   calculateMembershipEndDate,
   calculateRenewalWindow,
+  canAttendGym,
   getDaysUntilExpiry,
   isMembershipExpiringSoon,
+  listExpiringSoonMemberships,
   normalizeDurationDays,
+  recalculateMembershipStates,
   resolveActiveMembership,
   resolveMembershipStatus
 };
@@ -300,6 +308,48 @@ export async function listExpiringMemberships({ appContext, windowDays = 7 } = {
   }
 }
 
+export async function processMembershipExpiry({ appContext, asOf = null, windowDays = 7 } = {}) {
+  try {
+    const queryContext = await createQueryContext(appContext, { action: 'membership_expiry:process' });
+    const { data, error } = await queryContext.supabase.rpc('process_membership_expiry', compactRpcArgs({
+      as_of: asOf,
+      expiry_window_days: windowDays
+    }));
+
+    return { result: error ? null : normalizeExpiryProcessResult(firstRpcRow(data)), error };
+  } catch (error) {
+    return { result: null, error };
+  }
+}
+
+export async function getMembershipExpirySummary({ appContext, asOf = null, windowDays = 7 } = {}) {
+  try {
+    const queryContext = await createQueryContext(appContext, { action: 'membership_expiry:summary' });
+    const { data, error } = await queryContext.supabase.rpc('membership_expiry_operational_summary', compactRpcArgs({
+      expiry_window_days: windowDays,
+      as_of: asOf
+    }));
+
+    return { summary: error ? null : normalizeExpirySummary(firstRpcRow(data)), error };
+  } catch (error) {
+    return { summary: null, error };
+  }
+}
+
+export async function getAttendanceEligibility(userId, { appContext, asOf = null } = {}) {
+  try {
+    const queryContext = await createQueryContext(appContext, { action: 'attendance:eligibility' });
+    const { data, error } = await queryContext.supabase.rpc('can_attend_gym', compactRpcArgs({
+      target_user_id: userId || queryContext.userId,
+      as_of: asOf
+    }));
+
+    return { eligibility: error ? null : normalizeAttendanceEligibility(firstRpcRow(data)), error };
+  } catch (error) {
+    return { eligibility: null, error };
+  }
+}
+
 export function getCurrentMembership(memberships = []) {
   return resolveActiveMembership(memberships);
 }
@@ -343,10 +393,58 @@ function normalizePlan(plan) {
 }
 
 function normalizeMembership(membership) {
+  const operationalState = buildMembershipOperationalState(membership);
+
   return {
     ...membership,
-    status: resolveMembershipStatus(membership),
+    status: operationalState.status,
+    days_remaining: membership?.days_remaining ?? operationalState.daysRemaining,
+    expiring_soon: membership?.expiring_soon ?? operationalState.expiringSoon,
+    can_attend: membership?.can_attend ?? operationalState.canAttend,
     renewal_count: Number(membership?.renewal_count || 0),
     plan: membership?.membership_plans || null
   };
+}
+
+function normalizeExpiryProcessResult(result = {}) {
+  return {
+    expiredCount: Number(result?.expired_count || 0),
+    activatedCount: Number(result?.activated_count || 0),
+    pendingCount: Number(result?.pending_count || 0),
+    notificationTriggersPrepared: Number(result?.notification_triggers_prepared || 0)
+  };
+}
+
+function normalizeExpirySummary(summary = {}) {
+  return {
+    activeCount: Number(summary?.active_count || 0),
+    expiredCount: Number(summary?.expired_count || 0),
+    suspendedCount: Number(summary?.suspended_count || 0),
+    pendingCount: Number(summary?.pending_count || 0),
+    expiringSoonCount: Number(summary?.expiring_soon_count || 0),
+    attendanceReadyCount: Number(summary?.attendance_ready_count || 0),
+    notificationTriggersPreparedCount: Number(summary?.notification_triggers_prepared_count || 0)
+  };
+}
+
+function normalizeAttendanceEligibility(eligibility = {}) {
+  return {
+    canAttend: Boolean(eligibility?.can_attend),
+    membershipId: eligibility?.membership_id || null,
+    membershipStatus: eligibility?.membership_status || null,
+    reason: eligibility?.reason || 'unknown',
+    daysRemaining: eligibility?.days_remaining === null || typeof eligibility?.days_remaining === 'undefined'
+      ? null
+      : Number(eligibility.days_remaining)
+  };
+}
+
+function firstRpcRow(data) {
+  return Array.isArray(data) ? data[0] : data;
+}
+
+function compactRpcArgs(args) {
+  return Object.fromEntries(
+    Object.entries(args).filter(([, value]) => value !== null && typeof value !== 'undefined')
+  );
 }

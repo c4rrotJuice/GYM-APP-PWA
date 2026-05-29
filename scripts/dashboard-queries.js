@@ -1,6 +1,8 @@
 import { listUsers } from './profiles.js';
 import {
   getCurrentMembership,
+  getAttendanceEligibility,
+  getMembershipExpirySummary,
   listExpiringMemberships,
   listUserMemberships
 } from './memberships.js';
@@ -12,15 +14,9 @@ import {
 import { getFinancialSummary, listPayments } from './payments.js';
 
 export async function getAdminDashboardData({ appContext } = {}) {
-  const [usersResult, membershipResult, expiringResult, attendanceResult, workoutResult, financialResult, paymentsResult] = await Promise.all([
+  const [usersResult, expirySummaryResult, expiringResult, attendanceResult, workoutResult, financialResult, paymentsResult] = await Promise.all([
     listUsers({ appContext }),
-    countScopedRows('memberships', {
-      appContext,
-      filters: [
-        { column: 'status', value: 'active' },
-        { column: 'end_date', operator: 'gte', value: new Date().toISOString().slice(0, 10) }
-      ]
-    }),
+    getMembershipExpirySummary({ appContext, windowDays: 7 }),
     listExpiringMemberships({ appContext, windowDays: 7 }),
     countScopedRows('attendance_logs', { appContext }),
     countScopedRows('workout_programs', { appContext }),
@@ -30,7 +26,7 @@ export async function getAdminDashboardData({ appContext } = {}) {
 
   const errors = [
     usersResult.error,
-    membershipResult.error
+    expirySummaryResult.error
   ].filter(Boolean);
 
   if (errors.length) {
@@ -45,8 +41,12 @@ export async function getAdminDashboardData({ appContext } = {}) {
         totalUsers: users.length,
         totalMembers: users.filter((user) => user.role === 'member').length,
         totalTrainers: users.filter((user) => user.role === 'trainer').length,
-        activeMemberships: membershipResult.count,
-        expiringSoon: expiringResult.error ? null : expiringResult.memberships.length,
+        activeMemberships: expirySummaryResult.summary?.activeCount ?? null,
+        expiredMemberships: expirySummaryResult.summary?.expiredCount ?? null,
+        suspendedMemberships: expirySummaryResult.summary?.suspendedCount ?? null,
+        expiringSoon: expirySummaryResult.summary?.expiringSoonCount ?? (expiringResult.error ? null : expiringResult.memberships.length),
+        attendanceReady: expirySummaryResult.summary?.attendanceReadyCount ?? null,
+        notificationTriggersPrepared: expirySummaryResult.summary?.notificationTriggersPreparedCount ?? null,
         attendanceLogs: attendanceResult.error ? null : attendanceResult.count,
         workoutPrograms: workoutResult.error ? null : workoutResult.count,
         totalRevenue: financialResult.summary?.totalRevenue ?? null,
@@ -58,6 +58,7 @@ export async function getAdminDashboardData({ appContext } = {}) {
         recentTransactions: paymentsResult.payments || []
       },
       memberships: {
+        expirySummary: expirySummaryResult.summary,
         expiringSoon: expiringResult.memberships || []
       },
       gym: buildGymSnapshot(appContext, users)
@@ -93,13 +94,14 @@ export async function getTrainerDashboardData({ appContext } = {}) {
 }
 
 export async function getMemberDashboardData({ appContext } = {}) {
-  const [profileResult, membershipResult, membershipsResult, attendanceResult, workoutResult, progressResult] = await Promise.all([
+  const [profileResult, membershipResult, membershipsResult, eligibilityResult, attendanceResult, workoutResult, progressResult] = await Promise.all([
     getMemberOperationalProfile({ appContext }),
     countScopedRows('memberships', {
       appContext,
       filters: [{ column: 'user_id', value: appContext?.user?.id }]
     }),
     listUserMemberships(appContext?.user?.id, { appContext }),
+    getAttendanceEligibility(appContext?.user?.id, { appContext }),
     countScopedRows('attendance_logs', {
       appContext,
       filters: [{ column: 'user_id', value: appContext?.user?.id }]
@@ -130,7 +132,8 @@ export async function getMemberDashboardData({ appContext } = {}) {
       },
       membership: {
         current: getCurrentMembership(membershipsResult.memberships || []),
-        records: membershipsResult.memberships || []
+        records: membershipsResult.memberships || [],
+        eligibility: eligibilityResult.eligibility
       }
     },
     error: null
