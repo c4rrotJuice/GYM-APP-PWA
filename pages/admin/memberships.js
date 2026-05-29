@@ -39,8 +39,8 @@ export function createMembershipsView({ role }) {
 
       <section class="panel membership-admin-panel" data-membership-assign>
         <div>
-          <h2>Assign Plan To Member</h2>
-          <p>Renewals before expiry extend the current membership. Expired memberships start from today.</p>
+          <h2>Assign Or Renew Membership</h2>
+          <p>Select a member and an active plan. The system calculates dates, appends renewals, and protects active membership history.</p>
         </div>
         <form class="membership-assignment-form" data-assignment-form>
           <div class="field-group">
@@ -445,7 +445,12 @@ function renderMemberships(root, state) {
   count.textContent = `${state.memberships.length} ${state.memberships.length === 1 ? 'membership' : 'memberships'} shown`;
 
   if (!state.memberships.length) {
-    list.innerHTML = renderEmpty('No memberships found', 'Membership assignments will appear here.');
+    list.innerHTML = renderEmpty(
+      state.role === 'admin' ? 'No memberships assigned yet' : 'No memberships found',
+      state.role === 'admin'
+        ? 'Use Assign Or Renew Membership above. After assignment, renewal, suspension, reactivation, expiry badges, and history controls appear here.'
+        : 'Your active membership, expiry state, and history will appear here once assigned.'
+    );
     return;
   }
 

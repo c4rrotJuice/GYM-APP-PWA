@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gym-pwa-shell-v17';
+const CACHE_VERSION = 'gym-pwa-shell-v18';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
@@ -28,6 +28,7 @@ const APP_SHELL = [
   '/scripts/guards.js',
   '/scripts/install.js',
   '/scripts/memberships.js',
+  '/scripts/membership-logic.js',
   '/scripts/permissions.js',
   '/scripts/profiles.js',
   '/scripts/role-components.js',
@@ -38,6 +39,7 @@ const APP_SHELL = [
   '/scripts/supabase.js',
   '/pages/admin/dashboard.js',
   '/pages/admin/members.js',
+  '/pages/admin/memberships.js',
   '/pages/admin/users.js',
   '/pages/common/module-placeholder.js',
   '/pages/member/dashboard.js',

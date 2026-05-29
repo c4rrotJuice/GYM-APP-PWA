@@ -26,7 +26,7 @@ export function createAdminDashboardView({ supabaseReady }) {
             body: createActionList([
               { label: 'Create user', description: 'Add an admin, trainer, or member profile.', href: '#members', badge: 'Admin' },
               { label: 'Assign trainers', description: 'Review member trainer assignment.', href: '#members', badge: 'Ready' },
-              { label: 'Memberships', description: 'Membership lifecycle attaches in Phase 3.', href: '#dashboard', badge: 'Future', state: 'future', disabled: true }
+              { label: 'Membership workflow', description: 'Assign, renew, suspend, reactivate, and review history.', href: '#memberships', badge: 'Live' }
             ])
           })}
           ${createDashboardSection({
@@ -86,7 +86,7 @@ function renderAdminDashboard(data) {
         body: createActionList([
           { label: 'Create user', description: 'Add an admin, trainer, or member profile.', href: '#members', badge: 'Admin' },
           { label: 'Manage member access', description: 'Update status, role, and trainer assignment.', href: '#members', badge: 'Ready' },
-          { label: 'Review future reports', description: 'Reports are scaffolded for later analytics.', href: '#dashboard', badge: 'Future', state: 'future', disabled: true }
+          { label: 'Manage memberships', description: 'Assign plans, renew members, and control suspension state.', href: '#memberships', badge: 'Live' }
         ])
       })}
       ${createDashboardSection({
