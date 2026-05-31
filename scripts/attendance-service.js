@@ -150,70 +150,35 @@ export async function validateAttendanceToken(token, { appContext } = {}) {
   }
 }
 
-export async function recordMemberAttendance(token, { appContext } = {}) {
+export async function recordAttendanceFromScan(token, { appContext } = {}) {
   try {
-    const queryContext = await createQueryContext(appContext, { action: 'attendance:scan' });
-    const gymId = requireGymId(queryContext.gymId);
-    const validation = await validateAttendanceToken(token, { appContext });
-
-    if (!validation.valid) {
-      return {
-        attendanceLog: null,
-        error: null,
-        reason: formatValidationReason(validation.reason)
-      };
-    }
-
-    if (!queryContext.userId) {
-      throw new Error('Missing authenticated member for attendance scan.');
-    }
-
-    const eligibility = await getMemberAttendanceEligibility(queryContext);
-
-    if (eligibility.error) {
-      throw eligibility.error;
-    }
-
-    if (!eligibility.canAttend) {
-      return {
-        attendanceLog: null,
-        error: null,
-        reason: formatEligibilityReason(eligibility.reason)
-      };
-    }
-
-    const now = new Date();
-    const { data, error } = await scopedInsert(queryContext.supabase, 'attendance_logs', {
-      user_id: queryContext.userId,
-      qr_token_id: validation.tokenRecord.id,
-      attendance_date: formatLocalDate(now),
-      attended_at: now.toISOString(),
-      created_by: queryContext.userId,
-      source: 'qr'
-    }, { gymId })
-      .select('id, gym_id, user_id, qr_token_id, attendance_date, attended_at, source')
-      .single();
+    const queryContext = await createQueryContext(appContext);
+    const { data, error } = await queryContext.supabase.rpc('record_attendance_from_scan', {
+      scan_token: String(token || '').trim()
+    });
+    const result = Array.isArray(data) ? data[0] : data;
 
     if (error) {
-      return {
-        attendanceLog: null,
-        error,
-        reason: formatAttendanceError(error)
-      };
+      throw error;
     }
 
-    return {
-      attendanceLog: data,
-      error: null,
-      reason: null
-    };
+    return normalizeAttendanceScanResult(result);
   } catch (error) {
     return {
-      attendanceLog: null,
-      error,
-      reason: error.message || 'Unable to record attendance.'
+      success: false,
+      message: error.message || 'Unable to record attendance.'
     };
   }
+}
+
+export async function recordMemberAttendance(token, { appContext } = {}) {
+  const result = await recordAttendanceFromScan(token, { appContext });
+
+  return {
+    attendanceLog: result.success ? { source: 'qr_scan' } : null,
+    error: null,
+    reason: result.message
+  };
 }
 
 function normalizeValidityType(validityType) {
@@ -260,59 +225,9 @@ function buildValidationResult(valid, reason, tokenRecord) {
   };
 }
 
-function formatLocalDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function formatValidationReason(reason) {
-  const reasons = {
-    missing_token: 'QR token is missing.',
-    not_found: 'QR token was not found.',
-    inactive: 'QR token is inactive.',
-    revoked: 'QR token has been revoked.',
-    expired: 'QR token has expired.',
-    validation_error: 'QR token validation failed.'
-  };
-
-  return reasons[reason] || reason || 'QR token validation failed.';
-}
-
-function formatAttendanceError(error) {
-  if (error?.code === '23505') {
-    return 'Attendance already recorded for today.';
-  }
-
-  return error?.message || error?.details || 'Unable to record attendance.';
-}
-
-async function getMemberAttendanceEligibility(queryContext) {
-  const { data, error } = await queryContext.supabase.rpc('can_attend_gym', {
-    target_user_id: queryContext.userId,
-    as_of: formatLocalDate(new Date())
-  });
-  const row = Array.isArray(data) ? data[0] : data;
-
+function normalizeAttendanceScanResult(result = {}) {
   return {
-    canAttend: Boolean(row?.can_attend),
-    reason: row?.reason || 'unknown',
-    error
+    success: Boolean(result?.success),
+    message: result?.message || 'Unable to record attendance.'
   };
-}
-
-function formatEligibilityReason(reason) {
-  const reasons = {
-    active_membership: 'Active membership.',
-    member_not_active: 'Member account is not active.',
-    no_membership: 'No active membership.',
-    membership_suspended: 'Membership is suspended.',
-    membership_expired: 'Membership has expired.',
-    membership_not_started: 'Membership has not started.',
-    membership_cancelled: 'Membership has been cancelled.',
-    membership_not_eligible: 'Membership is not eligible for attendance.'
-  };
-
-  return reasons[reason] || reason || 'Member is not eligible for attendance.';
 }
