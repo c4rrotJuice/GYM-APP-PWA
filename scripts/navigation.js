@@ -17,6 +17,10 @@ export const ROUTE_DEFINITIONS = Object.freeze({
     title: 'Attendance',
     description: 'Attendance workspace prepared for Phase 3 QR scan workflows.'
   },
+  'attendance-display': {
+    title: 'QR Display',
+    description: 'Fullscreen reception display for the active attendance QR token.'
+  },
   workouts: {
     title: 'Workouts',
     description: 'Workout and program workspace prepared for Phase 3 assignments.'
@@ -32,6 +36,8 @@ const TOP_NAVIGATION = Object.freeze({
     { label: 'Overview', route: 'dashboard' },
     { label: 'Users', route: 'members' },
     { label: 'Memberships', route: 'memberships' },
+    { label: 'Attendance', route: 'attendance' },
+    { label: 'QR Display', route: 'attendance-display' },
     { label: 'Reports', route: 'dashboard', disabled: true, badge: 'Future' }
   ],
   trainer: [
@@ -51,15 +57,17 @@ const TOP_NAVIGATION = Object.freeze({
 
 export function renderBottomNavigation(navItems, role) {
   const visibleRoutes = getVisibleRoutes(role).map((route) => route.name);
+  let visibleCount = 0;
 
   navItems.forEach((item) => {
     const visible = visibleRoutes.includes(item.dataset.route);
     item.hidden = !visible;
+    visibleCount += visible ? 1 : 0;
   });
 
   const nav = navItems[0]?.parentElement;
   if (nav) {
-    nav.style.setProperty('--nav-count', String(Math.max(visibleRoutes.length, 1)));
+    nav.style.setProperty('--nav-count', String(Math.max(visibleCount, 1)));
   }
 }
 

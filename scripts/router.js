@@ -3,6 +3,8 @@ import { getAppContext } from './app-context.js';
 import { getRememberedRoute, rememberNavigationState } from './dashboard-state.js';
 import { ROUTE_DEFINITIONS, createTopSubNavigation, renderBottomNavigation } from './navigation.js';
 import { createAdminDashboardView, initAdminDashboardPage } from '../pages/admin/dashboard.js';
+import { createAdminAttendanceView, initAdminAttendancePage } from '../pages/admin/attendance.js';
+import { createAttendanceDisplayView, initAttendanceDisplayPage } from '../pages/admin/attendance-display.js';
 import { createMembershipsView, initMembershipsPage } from '../pages/admin/memberships.js';
 import { createUsersView, initUsersPage } from '../pages/admin/users.js';
 import { createTrainerDashboardView, initTrainerDashboardPage } from '../pages/trainer/dashboard.js';
@@ -42,7 +44,17 @@ const PAGE_REGISTRY = Object.freeze({
   },
   attendance: {
     render: createModulePlaceholderView,
-    init: initModulePlaceholderPage
+    init: initModulePlaceholderPage,
+    roles: {
+      admin: {
+        render: createAdminAttendanceView,
+        init: initAdminAttendancePage
+      }
+    }
+  },
+  'attendance-display': {
+    render: createAttendanceDisplayView,
+    init: initAttendanceDisplayPage
   },
   workouts: {
     render: createModulePlaceholderView,
@@ -85,6 +97,7 @@ export function initRouter({ target, navItems, appContext, supabaseReady }) {
     }
 
     rememberNavigationState({ role, routeName });
+    document.body.classList.toggle('attendance-display-mode', routeName === 'attendance-display');
     document.title = `${route.title} | Gym PWA`;
     target.setAttribute('aria-busy', 'true');
     target.innerHTML = createPageView(routeName, {

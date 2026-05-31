@@ -692,6 +692,189 @@
   gap: 16px;
 }
 
+.qr-admin-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.qr-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+
+.qr-validity-field {
+  min-width: 160px;
+}
+
+.qr-token-card {
+  display: grid;
+  gap: 16px;
+}
+
+.qr-token-empty,
+.qr-token-active {
+  display: grid;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.qr-token-empty strong,
+.qr-token-empty span {
+  margin: 0;
+}
+
+.qr-token-empty span {
+  color: var(--color-muted);
+}
+
+.qr-token-details {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.qr-token-value {
+  overflow-wrap: anywhere;
+  padding: 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #f8fafc;
+  color: var(--color-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+}
+
+.qr-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.qr-print-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #fff;
+  text-align: center;
+}
+
+.qr-print-card h2,
+.qr-print-card p {
+  margin: 0;
+}
+
+.qr-print-card img {
+  width: min(100%, 280px);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.attendance-display {
+  min-height: calc(100vh - 154px);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 18px;
+  padding: 18px;
+  border-radius: var(--radius);
+  background: #0f172a;
+  color: #fff;
+}
+
+.attendance-display-status {
+  justify-self: end;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: #dbeafe;
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.attendance-display-stage {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+}
+
+.attendance-display-card,
+.attendance-display-empty {
+  width: min(100%, 980px);
+  display: grid;
+  justify-items: center;
+  gap: 24px;
+  text-align: center;
+}
+
+.attendance-display-qr {
+  width: min(66vh, 72vw, 620px);
+  height: auto;
+  aspect-ratio: 1;
+  padding: 18px;
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.attendance-display-meta {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.attendance-display-label,
+.attendance-display-meta span:last-child,
+.attendance-display-empty span {
+  color: #bfdbfe;
+}
+
+.attendance-display-meta strong {
+  font-size: clamp(3rem, 10vw, 8rem);
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.attendance-display-empty {
+  padding: 32px;
+}
+
+.attendance-display-empty strong {
+  font-size: clamp(2.4rem, 7vw, 5rem);
+  line-height: 1;
+}
+
+.attendance-display-empty span {
+  max-width: 680px;
+  font-size: clamp(1rem, 2vw, 1.4rem);
+}
+
+body.attendance-display-mode .app-topbar,
+body.attendance-display-mode .bottom-nav,
+body.attendance-display-mode .top-subnav {
+  display: none;
+}
+
+body.attendance-display-mode .app-shell,
+body.attendance-display-mode .app-content {
+  min-height: 100vh;
+}
+
+body.attendance-display-mode .app-content {
+  padding: 0;
+}
+
+body.attendance-display-mode .attendance-display {
+  min-height: 100vh;
+  border-radius: 0;
+}
+
 .membership-plan-grid,
 .membership-record-grid,
 .finance-metric-grid {
@@ -1046,6 +1229,11 @@
   .future-slot-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
+
+  .qr-token-active {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+    align-items: start;
+  }
 }
 
 @media (max-width: 520px) {
@@ -1110,5 +1298,58 @@
 
   .admin-modal-backdrop {
     padding: 8px;
+  }
+}
+
+@media print {
+  body.qr-print-mode {
+    background: #fff;
+  }
+
+  .qr-print-mode .skip-link,
+  .qr-print-mode .install-banner,
+  .qr-print-mode .app-topbar,
+  .qr-print-mode .bottom-nav,
+  .qr-print-mode .top-subnav,
+  .qr-print-mode .dashboard-header,
+  .qr-print-mode .dashboard-status,
+  .qr-print-mode .qr-token-details,
+  .qr-print-mode .qr-admin-panel > .user-admin-toolbar,
+  .qr-print-mode .qr-admin-panel > .auth-message {
+    display: none !important;
+  }
+
+  .qr-print-mode .app-shell,
+  .qr-print-mode .app-content,
+  .qr-print-mode .dashboard-shell,
+  .qr-print-mode .dashboard-content,
+  .qr-print-mode .panel,
+  .qr-print-mode .qr-token-card,
+  .qr-print-mode .qr-token-active {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .qr-print-mode .qr-print-card {
+    width: 100%;
+    min-height: 90vh;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    border: 0;
+    color: #000;
+  }
+
+  .qr-print-mode .qr-print-card img {
+    width: 320px;
+    height: 320px;
   }
 }

@@ -15,6 +15,11 @@ export const ROUTE_PERMISSIONS = Object.freeze({
     roles: [ROLES.ADMIN, ROLES.TRAINER, ROLES.MEMBER],
     capability: 'attendance:view'
   },
+  'attendance-display': {
+    label: 'QR Display',
+    roles: [ROLES.ADMIN],
+    capability: 'attendance:manage_tokens'
+  },
   members: {
     label: 'Users',
     roles: [ROLES.ADMIN, ROLES.TRAINER],
