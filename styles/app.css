@@ -875,6 +875,78 @@ body.attendance-display-mode .attendance-display {
   border-radius: 0;
 }
 
+.member-scanner-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.member-scanner-stage {
+  position: relative;
+  min-height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: calc(var(--radius) + 4px);
+  background:
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.22), transparent 36%),
+    linear-gradient(145deg, #0f172a, #111827);
+}
+
+.member-scanner-reader {
+  min-height: 320px;
+}
+
+.member-scanner-reader video {
+  width: 100%;
+  min-height: 320px;
+  object-fit: cover;
+}
+
+.member-scanner-reader img,
+.member-scanner-reader input[type="file"],
+.member-scanner-reader button,
+.member-scanner-reader select {
+  display: none !important;
+}
+
+.member-scanner-overlay {
+  position: absolute;
+  inset: auto 14px 14px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius);
+  background: rgba(15, 23, 42, 0.82);
+  color: #fff;
+  backdrop-filter: blur(12px);
+}
+
+.member-scanner-overlay strong {
+  font-size: 1rem;
+}
+
+.member-scanner-overlay span {
+  color: #cbd5e1;
+  font-size: 0.88rem;
+}
+
+.member-scanner-panel[data-scanner-state="success"] .member-scanner-stage {
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.28), transparent 38%),
+    linear-gradient(145deg, #052e16, #14532d);
+}
+
+.member-scanner-panel[data-scanner-state="failure"] .member-scanner-stage {
+  background:
+    radial-gradient(circle at top left, rgba(239, 68, 68, 0.24), transparent 38%),
+    linear-gradient(145deg, #450a0a, #7f1d1d);
+}
+
+.member-scanner-actions {
+  display: grid;
+  gap: 10px;
+}
+
 .membership-plan-grid,
 .membership-record-grid,
 .finance-metric-grid {

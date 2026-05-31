@@ -49,6 +49,7 @@ const APP_SHELL = [
   '/pages/admin/memberships.js',
   '/pages/admin/users.js',
   '/pages/common/module-placeholder.js',
+  '/pages/member/attendance-scanner.js',
   '/pages/member/dashboard.js',
   '/pages/trainer/dashboard.js',
   '/pages/trainer/members.js'

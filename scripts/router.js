@@ -10,6 +10,7 @@ import { createUsersView, initUsersPage } from '../pages/admin/users.js';
 import { createTrainerDashboardView, initTrainerDashboardPage } from '../pages/trainer/dashboard.js';
 import { createTrainerMembersView, initTrainerMembersPage } from '../pages/trainer/members.js';
 import { createMemberDashboardView, initMemberDashboardPage } from '../pages/member/dashboard.js';
+import { createMemberAttendanceScannerView, initMemberAttendanceScannerPage } from '../pages/member/attendance-scanner.js';
 import { createModulePlaceholderView, initModulePlaceholderPage } from '../pages/common/module-placeholder.js';
 
 const DASHBOARD_PAGES = Object.freeze({
@@ -49,6 +50,10 @@ const PAGE_REGISTRY = Object.freeze({
       admin: {
         render: createAdminAttendanceView,
         init: initAdminAttendancePage
+      },
+      member: {
+        render: createMemberAttendanceScannerView,
+        init: initMemberAttendanceScannerPage
       }
     }
   },

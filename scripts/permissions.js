@@ -124,6 +124,7 @@ export const ACTION_PERMISSIONS = Object.freeze({
   'payments:list': ['payments:view_all', 'payments:view_own'],
   'payments:record': ['payments:record'],
   'payments:summary': ['payments:summary'],
+  'attendance:scan': ['attendance:scan'],
   'settings:update': ['settings:manage']
 });
 
