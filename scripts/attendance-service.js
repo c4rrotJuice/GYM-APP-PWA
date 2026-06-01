@@ -33,6 +33,15 @@ const ATTENDANCE_LOG_COLUMNS = [
   'notes'
 ].join(', ');
 
+const ATTENDANCE_SUMMARY_LOG_COLUMNS = [
+  'id',
+  'gym_id',
+  'user_id',
+  'attendance_date',
+  'attended_at',
+  'source'
+].join(', ');
+
 const ATTENDANCE_HISTORY_LIMIT = 80;
 
 export async function generateAttendanceToken(validityType, { appContext } = {}) {
@@ -283,11 +292,15 @@ export async function getAttendanceHistorySummary({ appContext, search = '', lim
     }
 
     const members = users || [];
-    const logs = await getAttendanceLogsForMembers(queryContext, gymId, members.map((member) => member.id), normalizedLimit);
+    const memberIds = members.map((member) => member.id);
+    const [logs, summaryLogs] = await Promise.all([
+      getRecentAttendanceLogsForMembers(queryContext, gymId, memberIds, normalizedLimit),
+      getAttendanceSummaryLogsForMembers(queryContext, gymId, memberIds)
+    ]);
 
     return {
       summary: null,
-      members: buildMemberAttendanceSummaries(members, logs),
+      members: buildMemberAttendanceSummaries(members, summaryLogs),
       logs: attachMembersToLogs(logs, members),
       error: null
     };
@@ -301,35 +314,56 @@ async function getMemberAttendanceHistory(queryContext, gymId, limit) {
     throw new Error('Missing member context for attendance history.');
   }
 
-  const logs = await getAttendanceLogsForMembers(queryContext, gymId, [queryContext.userId], limit);
+  const [logs, summaryLogs] = await Promise.all([
+    getRecentAttendanceLogsForMembers(queryContext, gymId, [queryContext.userId], limit),
+    getAttendanceSummaryLogsForMembers(queryContext, gymId, [queryContext.userId])
+  ]);
   const member = normalizeAttendanceMember(queryContext.source?.profile || {
     id: queryContext.userId,
     fullname: 'Member'
   });
 
   return {
-    summary: buildAttendanceSummary(logs),
-    members: [buildMemberAttendanceSummary(member, logs)],
+    summary: buildAttendanceSummary(summaryLogs),
+    members: [buildMemberAttendanceSummary(member, summaryLogs)],
     logs: attachMembersToLogs(logs, [member]),
     error: null
   };
 }
 
-async function getAttendanceLogsForMembers(queryContext, gymId, memberIds, limit) {
+async function getRecentAttendanceLogsForMembers(queryContext, gymId, memberIds, limit) {
+  return getAttendanceLogsForMembers(queryContext, gymId, memberIds, {
+    columns: ATTENDANCE_LOG_COLUMNS,
+    limit
+  });
+}
+
+async function getAttendanceSummaryLogsForMembers(queryContext, gymId, memberIds) {
+  return getAttendanceLogsForMembers(queryContext, gymId, memberIds, {
+    columns: ATTENDANCE_SUMMARY_LOG_COLUMNS
+  });
+}
+
+async function getAttendanceLogsForMembers(queryContext, gymId, memberIds, { columns, limit } = {}) {
   if (!memberIds.length) {
     return [];
   }
 
-  const { data, error } = await scopedSelect(
+  let query = scopedSelect(
     queryContext.supabase,
     'attendance_logs',
-    ATTENDANCE_LOG_COLUMNS,
+    columns || ATTENDANCE_LOG_COLUMNS,
     { gymId }
   )
     .in('user_id', memberIds)
     .order('attendance_date', { ascending: false })
-    .order('attended_at', { ascending: false })
-    .limit(limit);
+    .order('attended_at', { ascending: false });
+
+  if (limit) {
+    query = query.limit(limit);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw error;
