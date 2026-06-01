@@ -11,6 +11,8 @@ import { createTrainerDashboardView, initTrainerDashboardPage } from '../pages/t
 import { createTrainerMembersView, initTrainerMembersPage } from '../pages/trainer/members.js';
 import { createMemberDashboardView, initMemberDashboardPage } from '../pages/member/dashboard.js';
 import { createMemberAttendanceScannerView, initMemberAttendanceScannerPage } from '../pages/member/attendance-scanner.js';
+import { createManualAttendanceView, initManualAttendancePage } from '../pages/common/manual-attendance.js';
+import { createAttendanceHistoryView, initAttendanceHistoryPage } from '../pages/common/attendance-history.js';
 import { createModulePlaceholderView, initModulePlaceholderPage } from '../pages/common/module-placeholder.js';
 
 const DASHBOARD_PAGES = Object.freeze({
@@ -48,12 +50,36 @@ const PAGE_REGISTRY = Object.freeze({
     init: initModulePlaceholderPage,
     roles: {
       admin: {
-        render: createAdminAttendanceView,
-        init: initAdminAttendancePage
+        render: (state) => `
+          ${createAdminAttendanceView(state)}
+          ${createManualAttendanceView(state)}
+          ${createAttendanceHistoryView(state)}
+        `,
+        init: async (params) => {
+          await initAdminAttendancePage(params);
+          await initManualAttendancePage(params);
+          await initAttendanceHistoryPage(params);
+        }
+      },
+      trainer: {
+        render: (state) => `
+          ${createManualAttendanceView(state)}
+          ${createAttendanceHistoryView(state)}
+        `,
+        init: async (params) => {
+          await initManualAttendancePage(params);
+          await initAttendanceHistoryPage(params);
+        }
       },
       member: {
-        render: createMemberAttendanceScannerView,
-        init: initMemberAttendanceScannerPage
+        render: (state) => `
+          ${createMemberAttendanceScannerView(state)}
+          ${createAttendanceHistoryView(state)}
+        `,
+        init: async (params) => {
+          await initMemberAttendanceScannerPage(params);
+          await initAttendanceHistoryPage(params);
+        }
       }
     }
   },

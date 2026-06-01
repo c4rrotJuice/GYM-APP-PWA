@@ -44,6 +44,7 @@ const TOP_NAVIGATION = Object.freeze({
     { label: 'Dashboard', route: 'dashboard' },
     { label: 'Assigned Members', route: 'members' },
     { label: 'Memberships', route: 'memberships' },
+    { label: 'Attendance', route: 'attendance' },
     { label: 'Programs', route: 'workouts' }
   ],
   member: [
