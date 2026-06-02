@@ -1,5 +1,11 @@
 import { loadDashboardBootstrap } from '../../scripts/dashboard-bootstrap.js';
 import {
+  getActiveMembersMetric,
+  getAttendanceSnapshot,
+  getInactiveMembersMetric,
+  getRevenueSnapshot
+} from '../../services/analytics.js';
+import {
   createActionList,
   createCompactList,
   createDashboardSection,
@@ -18,6 +24,7 @@ export function createAdminDashboardView({ supabaseReady }) {
     status: { text: 'Loading dashboard overview...', busy: true },
     body: `
       <div data-dashboard-root="admin" aria-busy="true">
+        ${createAdminAnalyticsWidgets('loading')}
         ${createMetricGrid(getLoadingMetrics(), { label: 'Admin dashboard metrics' })}
         <div class="dashboard-grid dashboard-grid-wide">
           ${createDashboardSection({
@@ -48,9 +55,13 @@ export async function initAdminDashboardPage({ target, appContext }) {
     return;
   }
 
+  const analyticsPromise = loadAdminAnalyticsMetrics({ appContext });
   const { data, error } = await loadDashboardBootstrap({ appContext });
 
   if (error || !data) {
+    const analyticsResult = await analyticsPromise;
+
+    root.innerHTML = createAdminAnalyticsWidgets(analyticsResult);
     setStatus(status, error?.message || 'Unable to load the admin dashboard.', 'error');
     root.setAttribute('aria-busy', 'false');
     return;
@@ -59,6 +70,7 @@ export async function initAdminDashboardPage({ target, appContext }) {
   root.innerHTML = renderAdminDashboard(data);
   root.setAttribute('aria-busy', 'false');
   setStatus(status, 'Dashboard overview is current.', 'success');
+  renderAdminAnalyticsWidgets(root, await analyticsPromise);
 }
 
 function renderAdminDashboard(data) {
@@ -71,6 +83,8 @@ function renderAdminDashboard(data) {
   }));
 
   return `
+    ${createAdminAnalyticsWidgets('loading')}
+
     ${createMetricGrid([
       { label: 'Total users', value: data.totals.totalUsers, detail: 'Profiles in this gym' },
       { label: 'Members', value: data.totals.totalMembers, detail: 'Member accounts' },
@@ -157,6 +171,143 @@ function renderAdminDashboard(data) {
   `;
 }
 
+async function loadAdminAnalyticsMetrics({ appContext } = {}) {
+  const definitions = [
+    {
+      key: 'activeMembers',
+      label: 'Active Members',
+      state: 'active',
+      previousLabel: 'Yesterday',
+      load: () => getActiveMembersMetric({ appContext })
+    },
+    {
+      key: 'revenue',
+      label: 'Revenue Snapshot',
+      state: '',
+      previousLabel: 'Yesterday',
+      format: formatMoney,
+      load: () => getRevenueSnapshot({ appContext })
+    },
+    {
+      key: 'attendance',
+      label: 'Attendance Count',
+      state: 'active',
+      previousLabel: 'Yesterday',
+      load: () => getAttendanceSnapshot({ appContext })
+    },
+    {
+      key: 'inactiveMembers',
+      label: 'Inactive Members',
+      state: 'inactive',
+      previousLabel: 'Yesterday',
+      load: () => getInactiveMembersMetric({ appContext })
+    }
+  ];
+
+  const results = await Promise.allSettled(definitions.map((definition) => definition.load()));
+  const metrics = definitions.map((definition, index) => {
+    const result = results[index];
+
+    if (result.status === 'rejected') {
+      return {
+        label: definition.label,
+        value: 'Error',
+        detail: result.reason?.message || 'Unable to load this metric.',
+        state: 'warning'
+      };
+    }
+
+    return createAnalyticsMetricCard(definition, result.value);
+  });
+
+  return {
+    metrics,
+    hasError: results.some((result) => result.status === 'rejected')
+  };
+}
+
+function renderAdminAnalyticsWidgets(root, analyticsResult) {
+  const target = root?.querySelector('[data-admin-analytics-widgets]');
+
+  if (!target) {
+    return;
+  }
+
+  target.outerHTML = createAdminAnalyticsWidgets(analyticsResult);
+}
+
+function createAdminAnalyticsWidgets(result = 'loading') {
+  if (result === 'loading') {
+    return `
+      <div data-admin-analytics-widgets aria-busy="true">
+        ${createMetricGrid([
+          { label: 'Active Members', value: '...', detail: 'Loading analytics' },
+          { label: 'Revenue Snapshot', value: '...', detail: 'Loading analytics' },
+          { label: 'Attendance Count', value: '...', detail: 'Loading analytics' },
+          { label: 'Inactive Members', value: '...', detail: 'Loading analytics' }
+        ], { label: 'Admin analytics metrics' })}
+      </div>
+    `;
+  }
+
+  if (!result?.metrics?.length) {
+    return `
+      <div data-admin-analytics-widgets aria-busy="false">
+        ${createDashboardSection({
+          title: 'Analytics Metrics',
+          description: 'Dashboard analytics service output.',
+          empty: true,
+          body: createEmptyState('No analytics available', 'Daily statistics will appear after analytics data is available.')
+        })}
+      </div>
+    `;
+  }
+
+  return `
+    <div data-admin-analytics-widgets aria-busy="false">
+      ${createMetricGrid(result.metrics, { label: result.hasError ? 'Admin analytics metrics with errors' : 'Admin analytics metrics' })}
+    </div>
+  `;
+}
+
+function createAnalyticsMetricCard(definition, metric = {}) {
+  const value = Number(metric.value || 0);
+  const previousValue = Number(metric.previousValue || 0);
+  const trend = Number(metric.trend || 0);
+  const formatter = definition.format || formatPlainNumber;
+
+  return {
+    label: definition.label,
+    value: formatter(value),
+    detail: `${formatTrend(trend, formatter)} - ${definition.previousLabel}: ${formatter(previousValue)}`,
+    state: getMetricState(definition.state, trend)
+  };
+}
+
+function getMetricState(defaultState, trend) {
+  if (trend > 0) {
+    return defaultState || 'active';
+  }
+
+  if (trend < 0) {
+    return 'warning';
+  }
+
+  return defaultState || '';
+}
+
+function formatTrend(value, formatter = formatPlainNumber) {
+  if (value > 0) {
+    return `Up ${formatter(value)}`;
+  }
+
+  if (value < 0) {
+    return `Down ${formatter(Math.abs(value))}`;
+  }
+
+  return 'No change';
+}
+
 function getLoadingMetrics() {
   return [
     { label: 'Total users', value: '...' },
@@ -193,6 +344,12 @@ function formatMoney(value) {
 
   return Number(value || 0).toLocaleString(undefined, {
     minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+}
+
+function formatPlainNumber(value) {
+  return Number(value || 0).toLocaleString(undefined, {
     maximumFractionDigits: 2
   });
 }
