@@ -67,6 +67,8 @@ const ROLE_CAPABILITIES = Object.freeze({
     'payments:view_all',
     'payments:record',
     'payments:summary',
+    'analytics:view',
+    'analytics:calculate',
     'workouts:view',
     'workouts:view_all',
     'workouts:manage',
@@ -127,6 +129,8 @@ export const ACTION_PERMISSIONS = Object.freeze({
   'payments:list': ['payments:view_all', 'payments:view_own'],
   'payments:record': ['payments:record'],
   'payments:summary': ['payments:summary'],
+  'analytics:calculate_daily_stats': ['analytics:view', 'analytics:calculate'],
+  'analytics:upsert_daily_stats': ['analytics:calculate'],
   'attendance:scan': ['attendance:scan'],
   'settings:update': ['settings:manage']
 });
