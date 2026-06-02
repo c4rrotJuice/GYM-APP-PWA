@@ -4,6 +4,7 @@ import {
   getActiveSubscriptions,
   getUserSubscriptions,
   removeSubscription,
+  sendTestNotification,
   saveSubscription
 } from '../../services/notificationService.js';
 
@@ -33,6 +34,9 @@ export function createNotificationSettingsView() {
           <button class="button button-secondary button-full" type="button" data-disable-notifications>
             Disable notifications
           </button>
+          <button class="button button-secondary button-full" type="button" data-test-notifications>
+            Send test notification
+          </button>
         </div>
 
         <p class="notification-settings-message" data-notification-message role="status" aria-live="polite"></p>
@@ -43,7 +47,7 @@ export function createNotificationSettingsView() {
 
 export async function initNotificationSettingsPage({ target }) {
   const root = target?.querySelector('[data-notification-settings]');
-  const status = target?.querySelector('.dashboard-status');
+  const status = root?.closest('.dashboard-shell')?.querySelector('.dashboard-status') || null;
 
   if (!root) {
     return;
@@ -54,11 +58,13 @@ export async function initNotificationSettingsPage({ target }) {
     subscription: root.querySelector('[data-notification-subscription]'),
     enable: root.querySelector('[data-enable-notifications]'),
     disable: root.querySelector('[data-disable-notifications]'),
+    test: root.querySelector('[data-test-notifications]'),
     message: root.querySelector('[data-notification-message]')
   };
 
   controls.enable?.addEventListener('click', () => enableNotifications({ root, status, controls }));
   controls.disable?.addEventListener('click', () => disableNotifications({ root, status, controls }));
+  controls.test?.addEventListener('click', () => sendTestPush({ root, status, controls }));
 
   await renderNotificationState({ root, status, controls });
 }
@@ -97,6 +103,9 @@ async function enableNotifications({ root, status, controls }) {
 
     const result = await saveSubscription(pushSubscription);
     if (result.error) {
+      if (!existingSubscription) {
+        await pushSubscription.unsubscribe();
+      }
       throw result.error;
     }
 
@@ -126,18 +135,15 @@ async function disableNotifications({ root, status, controls }) {
     const browserSubscription = registration ? await registration.pushManager.getSubscription() : null;
     const activeResult = await getActiveSubscriptions();
 
-    if (browserSubscription) {
-      await browserSubscription.unsubscribe();
-      await removeSubscription(browserSubscription);
-    }
-
     if (activeResult.error) {
       throw activeResult.error;
     }
 
-    await Promise.all((activeResult.subscriptions || [])
-      .filter((subscription) => subscription?.endpoint !== browserSubscription?.endpoint)
-      .map((subscription) => removeSubscription(subscription.endpoint)));
+    if (browserSubscription) {
+      await browserSubscription.unsubscribe();
+    }
+
+    await removeSavedSubscriptions(activeResult.subscriptions || []);
 
     await renderNotificationState({
       root,
@@ -157,6 +163,33 @@ async function disableNotifications({ root, status, controls }) {
   }
 }
 
+async function sendTestPush({ root, status, controls }) {
+  setBusy({ root, status, controls }, 'Sending test notification...');
+
+  try {
+    const result = await sendTestNotification();
+    if (result.error) {
+      throw result.error;
+    }
+
+    await renderNotificationState({
+      root,
+      status,
+      controls,
+      message: 'Test notification sent.',
+      tone: 'success'
+    });
+  } catch (error) {
+    await renderNotificationState({
+      root,
+      status,
+      controls,
+      message: error?.message || 'Unable to send a test notification.',
+      tone: 'error'
+    });
+  }
+}
+
 async function renderNotificationState({ root, status, controls, message = '', tone = '' }) {
   const supportError = getSupportError();
   const permission = getNotificationPermission();
@@ -164,19 +197,39 @@ async function renderNotificationState({ root, status, controls, message = '', t
   const savedResult = await getUserSubscriptions();
   const activeSavedCount = (savedResult.subscriptions || []).filter((subscription) => subscription.active).length;
   const enabled = Boolean(browserSubscription && permission === 'granted');
+  const stateMessage = savedResult.error?.message ||
+    message ||
+    getDefaultMessage({ supportError, permission, enabled, activeSavedCount });
+  const stateTone = savedResult.error ? 'error' : tone || getDefaultTone({ supportError, permission, enabled });
 
   root.setAttribute('aria-busy', 'false');
   setText(controls.permission, formatPermission(permission, supportError));
   setText(controls.subscription, enabled ? 'Enabled' : activeSavedCount > 0 ? 'Saved' : 'Disabled');
-  setText(controls.message, message || getDefaultMessage({ supportError, permission, enabled, activeSavedCount }));
-  setStatus(status, message || getDefaultStatus({ supportError, permission, enabled }), tone || getDefaultTone({ supportError, permission, enabled }));
+  setText(controls.message, stateMessage);
+  setStatus(status, savedResult.error?.message || message || getDefaultStatus({ supportError, permission, enabled }), stateTone);
 
   if (controls.enable) {
-    controls.enable.disabled = Boolean(supportError || permission === 'denied' || enabled);
+    controls.enable.disabled = Boolean(supportError || savedResult.error || permission === 'denied' || enabled);
   }
 
   if (controls.disable) {
-    controls.disable.disabled = !enabled && activeSavedCount === 0;
+    controls.disable.disabled = Boolean(savedResult.error || (!enabled && activeSavedCount === 0));
+  }
+
+  if (controls.test) {
+    controls.test.disabled = Boolean(supportError || savedResult.error || !enabled);
+  }
+}
+
+async function removeSavedSubscriptions(subscriptions) {
+  const activeSubscriptions = subscriptions.filter((subscription) => subscription?.active);
+  const removals = await Promise.all(activeSubscriptions.map((subscription) => {
+    return removeSubscription(subscription?.endpoint);
+  }));
+  const failedRemoval = removals.find((result) => result.error);
+
+  if (failedRemoval?.error) {
+    throw failedRemoval.error;
   }
 }
 
@@ -191,6 +244,10 @@ function setBusy({ root, status, controls }, message) {
 
   if (controls.disable) {
     controls.disable.disabled = true;
+  }
+
+  if (controls.test) {
+    controls.test.disabled = true;
   }
 }
 

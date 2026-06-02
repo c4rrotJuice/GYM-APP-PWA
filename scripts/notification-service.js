@@ -88,6 +88,40 @@ export async function getActiveSubscriptions(userId = null) {
   }
 }
 
+export async function sendTestNotification() {
+  try {
+    const supabase = await getNotificationClient();
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error) {
+      throw error;
+    }
+
+    const accessToken = data?.session?.access_token;
+    if (!accessToken) {
+      throw new Error('An authenticated session is required to send a test notification.');
+    }
+
+    const response = await fetch('/.netlify/functions/send-test-notification', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})
+    });
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(body?.error || 'Unable to send a test notification.');
+    }
+
+    return { result: body, error: null };
+  } catch (error) {
+    return { result: null, error };
+  }
+}
+
 async function getNotificationClient() {
   const supabase = await getSupabaseClientReady();
 

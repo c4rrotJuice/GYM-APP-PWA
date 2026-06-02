@@ -109,7 +109,7 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === self.location.origin && url.pathname === '/scripts/env.runtime.js') {
     event.respondWith(fetch(request).catch(() => new Response(
-      'globalThis.__GYM_PWA_ENV__ = globalThis.__GYM_PWA_ENV__ || { SUPABASE_URL: "", SUPABASE_ANON_KEY: "" };',
+      'globalThis.__GYM_PWA_ENV__ = globalThis.__GYM_PWA_ENV__ || { SUPABASE_URL: "", SUPABASE_ANON_KEY: "", VAPID_PUBLIC_KEY: "" };',
       {
         headers: {
           'Content-Type': 'text/javascript',
@@ -136,6 +136,15 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(networkFirst(request, RUNTIME_CACHE));
+});
+
+self.addEventListener('push', (event) => {
+  event.waitUntil(showPushNotification(event));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(focusAppClient(event.notification.data?.url || '/app.html#settings'));
 });
 
 async function networkFirstNavigation(request) {
@@ -242,4 +251,56 @@ function offlineJsonResponse() {
       'Cache-Control': 'no-store'
     }
   });
+}
+
+async function showPushNotification(event) {
+  const payload = parsePushPayload(event);
+  const title = payload.title || 'Gym PWA';
+  const options = {
+    body: payload.body || 'You have a new gym notification.',
+    icon: payload.icon || '/assets/icon-192.png',
+    badge: payload.badge || '/assets/icon-192.png',
+    data: {
+      url: normalizeNotificationUrl(payload.url)
+    }
+  };
+
+  await self.registration.showNotification(title, options);
+}
+
+function parsePushPayload(event) {
+  try {
+    return event.data?.json?.() || {};
+  } catch (error) {
+    return {
+      body: event.data?.text?.() || ''
+    };
+  }
+}
+
+function normalizeNotificationUrl(url) {
+  if (!url) {
+    return '/app.html#settings';
+  }
+
+  try {
+    const parsedUrl = new URL(url, self.location.origin);
+    return parsedUrl.origin === self.location.origin
+      ? `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
+      : '/app.html#settings';
+  } catch (error) {
+    return '/app.html#settings';
+  }
+}
+
+async function focusAppClient(url) {
+  const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const appClient = clientList.find((client) => new URL(client.url).origin === self.location.origin);
+
+  if (appClient) {
+    await appClient.focus();
+    return appClient.navigate(url);
+  }
+
+  return self.clients.openWindow(url);
 }
