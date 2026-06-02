@@ -18,7 +18,9 @@ const NOTIFICATION_QUEUE_COLUMNS = [
   'status',
   'attempt_count',
   'created_at',
-  'processed_at'
+  'processed_at',
+  'last_error',
+  'last_attempt_at'
 ].join(', ');
 
 const BROADCAST_USER_COLUMNS = 'id, role, account_status';
@@ -136,7 +138,8 @@ export async function createBroadcast(broadcast = {}) {
 export async function checkExpiringMemberships({ asOf = new Date() } = {}) {
   try {
     const supabase = await getNotificationClient();
-    const reminderDate = addDays(toDateOnly(asOf), EXPIRY_REMINDER_DAYS);
+    const triggerDate = toDateOnly(asOf);
+    const reminderDate = addDays(triggerDate, EXPIRY_REMINDER_DAYS);
     const { data: memberships, error: membershipsError } = await supabase
       .from('memberships')
       .select(EXPIRING_MEMBERSHIP_COLUMNS)
@@ -160,6 +163,8 @@ export async function checkExpiringMemberships({ asOf = new Date() } = {}) {
           membershipType: membership.type || null,
           endDate: membership.end_date,
           daysUntilExpiry: EXPIRY_REMINDER_DAYS,
+          triggerDate,
+          dedupeKey: createDedupeKey('membership_expiry_reminder', membership.user_id, reminderDate),
           trigger: 'checkExpiringMemberships'
         }
       }));
@@ -174,7 +179,8 @@ export async function checkInactiveMembers({ asOf = new Date(), thresholdDays = 
   try {
     const supabase = await getNotificationClient();
     const normalizedThreshold = normalizePositiveInteger(thresholdDays, DEFAULT_INACTIVE_THRESHOLD_DAYS);
-    const cutoffDate = addDays(toDateOnly(asOf), -normalizedThreshold);
+    const triggerDate = toDateOnly(asOf);
+    const cutoffDate = addDays(triggerDate, -normalizedThreshold);
 
     const { data: members, error: membersError } = await supabase
       .from('users')
@@ -218,8 +224,10 @@ export async function checkInactiveMembers({ asOf = new Date(), thresholdDays = 
             url: '/app.html#attendance-history',
             thresholdDays: normalizedThreshold,
             cutoffDate,
+            triggerDate,
             lastAttendanceDate,
-            daysInactive: lastAttendanceDate ? daysBetween(lastAttendanceDate, toDateOnly(asOf)) : null,
+            daysInactive: lastAttendanceDate ? daysBetween(lastAttendanceDate, triggerDate) : null,
+            dedupeKey: createDedupeKey('inactive_member', member.id, `${triggerDate}:${normalizedThreshold}`),
             trigger: 'checkInactiveMembers'
           }
         });
@@ -244,6 +252,14 @@ export async function createAnnouncementNotifications(announcement = {}) {
       trigger: 'createAnnouncementNotifications'
     }
   });
+}
+
+export async function listQueuedNotifications({ limit = 50 } = {}) {
+  return listNotificationsByStatus('pending', { limit });
+}
+
+export async function listFailedNotifications({ limit = 50 } = {}) {
+  return listNotificationsByStatus('failed', { limit });
 }
 
 export async function processNotificationQueue({ limit = 25 } = {}) {
@@ -500,13 +516,15 @@ function normalizeQueueLimit(value) {
 }
 
 async function insertNotificationRows(supabase, rows) {
-  if (!rows.length) {
+  const insertableRows = await filterExistingNotificationRows(supabase, rows);
+
+  if (!insertableRows.length) {
     return { notifications: [], count: 0, error: null };
   }
 
   const { data, error } = await supabase
     .from('notification_queue')
-    .insert(rows)
+    .insert(insertableRows)
     .select(NOTIFICATION_QUEUE_COLUMNS);
 
   return {
@@ -514,6 +532,50 @@ async function insertNotificationRows(supabase, rows) {
     count: error ? 0 : (data || []).length,
     error
   };
+}
+
+async function listNotificationsByStatus(status, { limit = 50 } = {}) {
+  try {
+    const supabase = await getNotificationClient();
+    const { data, error } = await supabase
+      .from('notification_queue')
+      .select(NOTIFICATION_QUEUE_COLUMNS)
+      .eq('status', status)
+      .order('created_at', { ascending: false })
+      .limit(normalizeQueueLimit(limit));
+
+    return {
+      notifications: error ? [] : (data || []).map(normalizeQueuedNotification),
+      error
+    };
+  } catch (error) {
+    return { notifications: [], error };
+  }
+}
+
+async function filterExistingNotificationRows(supabase, rows = []) {
+  const dedupeKeys = rows
+    .map((row) => row?.payload?.dedupeKey)
+    .filter(Boolean);
+
+  if (!dedupeKeys.length) {
+    return rows;
+  }
+
+  const { data, error } = await supabase
+    .from('notification_queue')
+    .select('id, payload')
+    .in('payload->>dedupeKey', dedupeKeys);
+
+  if (error) {
+    throw error;
+  }
+
+  const existingKeys = new Set((data || [])
+    .map((row) => row?.payload?.dedupeKey)
+    .filter(Boolean));
+
+  return rows.filter((row) => !existingKeys.has(row?.payload?.dedupeKey));
 }
 
 function normalizePositiveInteger(value, fallback) {
@@ -573,6 +635,12 @@ function parseDateOnly(value) {
   }
 
   return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+}
+
+function createDedupeKey(type, recipientUserId, scope) {
+  return [type, recipientUserId, scope]
+    .map((part) => String(part || '').trim())
+    .join(':');
 }
 
 function normalizeQueuedNotification(notification) {

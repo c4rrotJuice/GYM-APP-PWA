@@ -6,6 +6,7 @@ import { createAdminDashboardView, initAdminDashboardPage } from '../pages/admin
 import { createAdminAttendanceView, initAdminAttendancePage } from '../pages/admin/attendance.js';
 import { createAttendanceDisplayView, initAttendanceDisplayPage } from '../pages/admin/attendance-display.js';
 import { createMembershipsView, initMembershipsPage } from '../pages/admin/memberships.js';
+import { createAdminNotificationsView, initAdminNotificationsPage } from '../pages/admin/notifications.js';
 import { createUsersView, initUsersPage } from '../pages/admin/users.js';
 import { createTrainerDashboardView, initTrainerDashboardPage } from '../pages/trainer/dashboard.js';
 import { createTrainerMembersView, initTrainerMembersPage } from '../pages/trainer/members.js';
@@ -87,6 +88,10 @@ const PAGE_REGISTRY = Object.freeze({
   'attendance-display': {
     render: createAttendanceDisplayView,
     init: initAttendanceDisplayPage
+  },
+  notifications: {
+    render: createAdminNotificationsView,
+    init: initAdminNotificationsPage
   },
   workouts: {
     render: createModulePlaceholderView,

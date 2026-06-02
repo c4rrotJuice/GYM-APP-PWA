@@ -5,6 +5,8 @@ export {
   createBroadcast,
   enqueueNotification,
   getActiveSubscriptions,
+  listFailedNotifications,
+  listQueuedNotifications,
   getUserSubscriptions,
   processNotificationQueue,
   removeSubscription,

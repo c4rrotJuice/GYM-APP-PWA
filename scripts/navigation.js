@@ -28,6 +28,10 @@ export const ROUTE_DEFINITIONS = Object.freeze({
   settings: {
     title: 'Settings',
     description: 'Account notification preferences and app settings.'
+  },
+  notifications: {
+    title: 'Notifications',
+    description: 'Queued and failed notification dispatch records.'
   }
 });
 
@@ -38,6 +42,7 @@ const TOP_NAVIGATION = Object.freeze({
     { label: 'Memberships', route: 'memberships' },
     { label: 'Attendance', route: 'attendance' },
     { label: 'QR Display', route: 'attendance-display' },
+    { label: 'Notifications', route: 'notifications' },
     { label: 'Settings', route: 'settings' },
     { label: 'Reports', route: 'dashboard', disabled: true, badge: 'Future' }
   ],

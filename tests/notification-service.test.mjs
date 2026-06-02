@@ -178,7 +178,7 @@ const expiringResult = await checkExpiringMemberships({ asOf: '2026-06-03' });
 assert.equal(expiringResult.error, null, 'checkExpiringMemberships succeeds');
 assert.equal(expiringResult.count, 1, 'checkExpiringMemberships queues matching 7-day reminders');
 assert.deepEqual(
-  operations.at(-2).filters,
+  operations.at(-3).filters,
   [
     ['status', 'active'],
     ['end_date', '2026-06-10']
@@ -196,7 +196,7 @@ const inactiveResult = await checkInactiveMembers({ asOf: '2026-06-03', threshol
 assert.equal(inactiveResult.error, null, 'checkInactiveMembers succeeds');
 assert.equal(inactiveResult.count, 2, 'checkInactiveMembers queues members over the attendance threshold');
 assert.deepEqual(
-  operations.at(-3).filters,
+  operations.at(-4).filters,
   [
     ['role', 'member'],
     ['account_status', 'active']
@@ -204,7 +204,7 @@ assert.deepEqual(
   'checkInactiveMembers loads active member recipients'
 );
 assert.deepEqual(
-  operations.at(-2).filters,
+  operations.at(-3).filters,
   [['user_id', ['user-1', 'user-2', 'user-3']]],
   'checkInactiveMembers loads attendance for active members'
 );

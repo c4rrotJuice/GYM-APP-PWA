@@ -3,6 +3,7 @@ const { createPushRequest } = require('./send-test-notification.js');
 
 const DEFAULT_VAPID_SUBJECT = 'mailto:notifications@gym-pwa.local';
 const MAX_QUEUE_LIMIT = 100;
+const MAX_NOTIFICATION_ATTEMPTS = 3;
 const QUEUE_COLUMNS = [
   'id',
   'type',
@@ -11,20 +12,37 @@ const QUEUE_COLUMNS = [
   'status',
   'attempt_count',
   'created_at',
-  'processed_at'
+  'processed_at',
+  'last_error',
+  'last_attempt_at'
 ].join(',');
 const USER_COLUMNS = 'id,gym_id,role,account_status';
 const PUSH_SUBSCRIPTION_COLUMNS = 'id,endpoint,p256dh,auth';
 
+exports.config = {
+  schedule: '*/15 * * * *'
+};
+
 exports.handler = async function handler(event) {
   try {
-    if (event.httpMethod !== 'POST') {
+    const scheduled = isScheduledEvent(event);
+
+    if (event.httpMethod !== 'POST' && !scheduled) {
       return jsonResponse(405, { error: 'Method not allowed.' });
     }
 
     const env = getEnvironment();
     if (!env.ok) {
       return jsonResponse(500, { error: env.error });
+    }
+
+    const body = parseJson(event.body || '{}') || {};
+    const limit = normalizeLimit(body.limit);
+    const automationSecret = process.env.PHASE5_AUTOMATION_SECRET || process.env.AUTOMATION_SECRET || '';
+    const providedSecret = readAutomationSecret(event.headers || {});
+
+    if (scheduled || (automationSecret && providedSecret === automationSecret)) {
+      return await processQueueForAutomation(env.value, limit);
     }
 
     const accessToken = readBearerToken(event.headers || {});
@@ -46,8 +64,6 @@ exports.handler = async function handler(event) {
       return jsonResponse(403, { error: 'Only active admins can process notifications.' });
     }
 
-    const body = parseJson(event.body || '{}') || {};
-    const limit = normalizeLimit(body.limit);
     const eligibleRecipients = await getEligibleRecipientIds(env.value, adminProfile.profile.gym_id);
     if (eligibleRecipients.error) {
       return jsonResponse(500, { error: eligibleRecipients.error });
@@ -79,23 +95,22 @@ exports.handler = async function handler(event) {
 async function processNotification(env, notification, adminProfile) {
   const recipient = await getUserProfile(env, notification.recipient_user_id);
   if (recipient.error) {
-    await markNotification(env, notification, 'failed');
+    await markNotification(env, notification, 'failed', recipient.error);
     return { id: notification.id, status: 'failed', error: recipient.error };
   }
 
   if (!isEligibleRecipient(recipient.profile, adminProfile.gym_id)) {
-    await markNotification(env, notification, 'failed');
+    await markNotification(env, notification, 'failed', 'Recipient is not eligible.');
     return { id: notification.id, status: 'failed', error: 'Recipient is not eligible.' };
   }
 
   const subscriptions = await getActiveSubscriptions(env, notification.recipient_user_id);
   if (subscriptions.error) {
-    await markNotification(env, notification, 'failed');
-    return { id: notification.id, status: 'failed', error: subscriptions.error };
+    return await markNotificationForRetry(env, notification, subscriptions.error);
   }
 
   if (!subscriptions.items.length) {
-    await markNotification(env, notification, 'failed');
+    await markNotification(env, notification, 'failed', 'Recipient has no active push subscription.');
     return { id: notification.id, status: 'failed', error: 'Recipient has no active push subscription.' };
   }
 
@@ -111,17 +126,23 @@ async function processNotification(env, notification, adminProfile) {
   )));
 
   const sentCount = pushResults.filter(({ result }) => result.ok).length;
-  const nextStatus = sentCount > 0 ? 'sent' : 'failed';
+  if (sentCount > 0) {
+    await markNotification(env, notification, 'sent', null);
 
-  await markNotification(env, notification, nextStatus);
+    return {
+      id: notification.id,
+      status: 'sent',
+      sent: sentCount,
+      attempted: pushResults.length,
+      expired: expiredSubscriptions.length
+    };
+  }
 
-  return {
-    id: notification.id,
-    status: nextStatus,
-    sent: sentCount,
+  const errorMessage = summarizePushFailure(pushResults);
+  return await markNotificationForRetry(env, notification, errorMessage, {
     attempted: pushResults.length,
     expired: expiredSubscriptions.length
-  };
+  });
 }
 
 function sendQueuedNotification(env, notification, subscription) {
@@ -243,7 +264,51 @@ async function getPendingNotifications(env, limit, recipientIds) {
   const query = [
     `select=${encodeURIComponent(QUEUE_COLUMNS)}`,
     'status=eq.pending',
+    `attempt_count=lt.${MAX_NOTIFICATION_ATTEMPTS}`,
     `recipient_user_id=in.(${recipientIds.map(encodeURIComponent).join(',')})`,
+    'order=created_at.asc',
+    `limit=${encodeURIComponent(limit)}`
+  ].join('&');
+  const response = await requestJson(`${env.url}/rest/v1/notification_queue?${query}`, {
+    headers: serviceHeaders(env)
+  });
+
+  if (!response.ok) {
+    return { items: [], error: response.body?.message || 'Unable to load pending notifications.' };
+  }
+
+  return { items: Array.isArray(response.body) ? response.body : [], error: null };
+}
+
+async function processQueueForAutomation(env, limit) {
+  const pending = await getPendingNotificationsForAutomation(env, limit);
+  if (pending.error) {
+    await logAutomationFailure(env, {
+      jobName: 'notification_queue_processing',
+      error: pending.error
+    });
+    return jsonResponse(500, { error: pending.error });
+  }
+
+  const results = [];
+  for (const notification of pending.items) {
+    const recipient = await getUserProfile(env, notification.recipient_user_id);
+    const adminProfile = {
+      gym_id: recipient.profile?.gym_id,
+      role: 'admin',
+      account_status: 'active'
+    };
+    results.push(await processNotification(env, notification, adminProfile));
+  }
+
+  return jsonResponse(200, summarizeResults(results));
+}
+
+async function getPendingNotificationsForAutomation(env, limit) {
+  const query = [
+    `select=${encodeURIComponent(QUEUE_COLUMNS)}`,
+    'status=eq.pending',
+    `attempt_count=lt.${MAX_NOTIFICATION_ATTEMPTS}`,
     'order=created_at.asc',
     `limit=${encodeURIComponent(limit)}`
   ].join('&');
@@ -293,7 +358,7 @@ async function deactivateSubscription(env, userId, endpoint) {
   });
 }
 
-async function markNotification(env, notification, status) {
+async function markNotification(env, notification, status, errorMessage = null) {
   await requestJson(`${env.url}/rest/v1/notification_queue?id=eq.${encodeURIComponent(notification.id)}`, {
     method: 'PATCH',
     headers: {
@@ -303,9 +368,39 @@ async function markNotification(env, notification, status) {
     body: {
       status,
       attempt_count: Number(notification.attempt_count || 0) + 1,
-      processed_at: new Date().toISOString()
+      processed_at: status === 'sent' || status === 'failed' ? new Date().toISOString() : null,
+      last_attempt_at: new Date().toISOString(),
+      last_error: errorMessage
     }
   });
+}
+
+async function markNotificationForRetry(env, notification, errorMessage, details = {}) {
+  const nextAttemptCount = Number(notification.attempt_count || 0) + 1;
+  const nextStatus = nextAttemptCount >= MAX_NOTIFICATION_ATTEMPTS ? 'failed' : 'pending';
+
+  await markNotification(env, notification, nextStatus, errorMessage);
+
+  if (nextStatus === 'failed') {
+    await logAutomationFailure(env, {
+      jobName: 'notification_queue_processing',
+      error: errorMessage,
+      context: {
+        notificationId: notification.id,
+        recipientUserId: notification.recipient_user_id,
+        attemptCount: nextAttemptCount,
+        ...details
+      }
+    });
+  }
+
+  return {
+    id: notification.id,
+    status: nextStatus,
+    error: errorMessage,
+    attemptCount: nextAttemptCount,
+    ...details
+  };
 }
 
 function getEnvironment() {
@@ -376,6 +471,38 @@ function readBearerToken(headers) {
   }
 
   return authorization.slice('Bearer '.length).trim();
+}
+
+function readAutomationSecret(headers) {
+  return headers['x-automation-secret'] || headers['X-Automation-Secret'] || '';
+}
+
+function isScheduledEvent(event) {
+  return String(event.headers?.['x-netlify-scheduled'] || event.headers?.['X-Netlify-Scheduled'] || '').toLowerCase() === 'true';
+}
+
+async function logAutomationFailure(env, { jobName, error, context = {} }) {
+  const message = error?.message || String(error || 'Unknown automation failure.');
+  console.error(`[${jobName}]`, message, context);
+
+  await requestJson(`${env.url}/rest/v1/automation_failures`, {
+    method: 'POST',
+    headers: {
+      ...serviceHeaders(env),
+      'Content-Type': 'application/json'
+    },
+    body: {
+      job_name: jobName,
+      gym_id: null,
+      error_message: message,
+      error_context: context
+    }
+  }).catch(() => null);
+}
+
+function summarizePushFailure(pushResults = []) {
+  const statuses = pushResults.map(({ result }) => result.status || result.error || 'unknown');
+  return `No push service accepted the notification. Results: ${statuses.join(', ')}`;
 }
 
 function requestJson(url, { method = 'GET', headers = {}, body = null } = {}) {
