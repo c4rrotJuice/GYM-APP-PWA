@@ -1,5 +1,9 @@
 export {
   calculateDailyStats,
+  getActiveMembersMetric,
+  getAttendanceSnapshot,
+  getInactiveMembersMetric,
+  getRevenueSnapshot,
   normalizeDailyStats,
   normalizeStatDate,
   upsertDailyStats
