@@ -14,6 +14,7 @@ import { createMemberAttendanceScannerView, initMemberAttendanceScannerPage } fr
 import { createManualAttendanceView, initManualAttendancePage } from '../pages/common/manual-attendance.js';
 import { createAttendanceHistoryView, initAttendanceHistoryPage } from '../pages/common/attendance-history.js';
 import { createModulePlaceholderView, initModulePlaceholderPage } from '../pages/common/module-placeholder.js';
+import { createNotificationSettingsView, initNotificationSettingsPage } from '../pages/common/notification-settings.js';
 
 const DASHBOARD_PAGES = Object.freeze({
   admin: {
@@ -92,8 +93,8 @@ const PAGE_REGISTRY = Object.freeze({
     init: initModulePlaceholderPage
   },
   settings: {
-    render: createModulePlaceholderView,
-    init: initModulePlaceholderPage
+    render: createNotificationSettingsView,
+    init: initNotificationSettingsPage
   }
 });
 

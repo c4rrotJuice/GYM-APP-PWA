@@ -37,8 +37,8 @@ export const ROUTE_PERMISSIONS = Object.freeze({
   },
   settings: {
     label: 'Settings',
-    roles: [ROLES.ADMIN],
-    capability: 'settings:manage'
+    roles: [ROLES.ADMIN, ROLES.TRAINER, ROLES.MEMBER],
+    capability: 'notifications:manage'
   }
 });
 
@@ -72,6 +72,7 @@ const ROLE_CAPABILITIES = Object.freeze({
     'workouts:view',
     'workouts:view_all',
     'workouts:manage',
+    'notifications:manage',
     'settings:manage'
   ],
   [ROLES.TRAINER]: [
@@ -88,7 +89,8 @@ const ROLE_CAPABILITIES = Object.freeze({
     'payments:view_assigned',
     'workouts:view',
     'workouts:view_assigned',
-    'workouts:assign'
+    'workouts:assign',
+    'notifications:manage'
   ],
   [ROLES.MEMBER]: [
     'dashboard:view',
@@ -101,7 +103,8 @@ const ROLE_CAPABILITIES = Object.freeze({
     'attendance:eligibility',
     'payments:view_own',
     'workouts:view',
-    'workouts:view_own'
+    'workouts:view_own',
+    'notifications:manage'
   ]
 });
 
@@ -132,7 +135,8 @@ export const ACTION_PERMISSIONS = Object.freeze({
   'analytics:calculate_daily_stats': ['analytics:view', 'analytics:calculate'],
   'analytics:upsert_daily_stats': ['analytics:calculate'],
   'attendance:scan': ['attendance:scan'],
-  'settings:update': ['settings:manage']
+  'settings:update': ['settings:manage'],
+  'notifications:manage': ['notifications:manage']
 });
 
 export function normalizeRole(role) {

@@ -27,7 +27,7 @@ export const ROUTE_DEFINITIONS = Object.freeze({
   },
   settings: {
     title: 'Settings',
-    description: 'Tenant and platform settings for administrators.'
+    description: 'Account notification preferences and app settings.'
   }
 });
 
@@ -38,6 +38,7 @@ const TOP_NAVIGATION = Object.freeze({
     { label: 'Memberships', route: 'memberships' },
     { label: 'Attendance', route: 'attendance' },
     { label: 'QR Display', route: 'attendance-display' },
+    { label: 'Settings', route: 'settings' },
     { label: 'Reports', route: 'dashboard', disabled: true, badge: 'Future' }
   ],
   trainer: [
@@ -45,13 +46,15 @@ const TOP_NAVIGATION = Object.freeze({
     { label: 'Assigned Members', route: 'members' },
     { label: 'Memberships', route: 'memberships' },
     { label: 'Attendance', route: 'attendance' },
-    { label: 'Programs', route: 'workouts' }
+    { label: 'Programs', route: 'workouts' },
+    { label: 'Settings', route: 'settings' }
   ],
   member: [
     { label: 'Dashboard', route: 'dashboard' },
     { label: 'Membership', route: 'memberships' },
     { label: 'Attendance', route: 'attendance' },
     { label: 'Workouts', route: 'workouts' },
+    { label: 'Settings', route: 'settings' },
     { label: 'Progress', route: 'workouts', disabled: true, badge: 'Future' }
   ]
 });
