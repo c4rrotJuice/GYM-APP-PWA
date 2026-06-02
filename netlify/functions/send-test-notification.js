@@ -457,3 +457,5 @@ exports.__test = {
   createVapidJwt,
   encryptPushPayload
 };
+
+exports.createPushRequest = createPushRequest;

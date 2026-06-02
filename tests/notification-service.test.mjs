@@ -17,14 +17,27 @@ export async function getSupabaseClientReady() {
 `);
 
 const {
+  createBroadcast,
+  enqueueNotification,
   getActiveSubscriptions,
   getUserSubscriptions,
+  processNotificationQueue,
   removeSubscription,
   saveSubscription
 } = await import(modulePath);
 
 const operations = [];
+const fetchCalls = [];
 globalThis.__notificationTestClient = createSupabaseClient(operations);
+globalThis.fetch = async (url, options = {}) => {
+  fetchCalls.push({ url, options });
+  return {
+    ok: true,
+    async json() {
+      return { processed: 1, sent: 1, failed: 0 };
+    }
+  };
+};
 
 const pushSubscription = {
   endpoint: ' https://push.example/subscription-1 ',
@@ -96,10 +109,71 @@ assert.deepEqual(
   'getActiveSubscriptions filters by active state and optional user'
 );
 
+const enqueueResult = await enqueueNotification({
+  type: 'membership_expiring',
+  recipientUserId: 'user-2',
+  payload: {
+    title: 'Membership expiring',
+    body: 'Renew soon.'
+  }
+});
+
+assert.equal(enqueueResult.error, null, 'enqueueNotification succeeds');
+assert.equal(enqueueResult.notification.status, 'pending', 'queued notifications default to pending');
+assert.deepEqual(
+  operations.at(-1).values,
+  {
+    type: 'membership_expiring',
+    recipient_user_id: 'user-2',
+    payload: {
+      title: 'Membership expiring',
+      body: 'Renew soon.'
+    },
+    status: 'pending',
+    attempt_count: 0
+  },
+  'enqueueNotification inserts the normalized queue payload'
+);
+
+const broadcastResult = await createBroadcast({
+  type: 'gym_notice',
+  payload: {
+    title: 'Gym notice',
+    body: 'Class starts soon.'
+  },
+  roles: ['member']
+});
+
+assert.equal(broadcastResult.error, null, 'createBroadcast succeeds');
+assert.equal(broadcastResult.count, 2, 'createBroadcast returns the queued row count');
+assert.deepEqual(
+  operations.at(-2).filters,
+  [
+    ['account_status', 'active'],
+    ['role', ['member']]
+  ],
+  'createBroadcast loads active eligible users by role'
+);
+assert.deepEqual(
+  operations.at(-1).values.map((row) => row.recipient_user_id),
+  ['user-1', 'user-2'],
+  'createBroadcast queues one notification per eligible user'
+);
+
+const processResult = await processNotificationQueue({ limit: 250 });
+
+assert.equal(processResult.error, null, 'processNotificationQueue succeeds');
+assert.equal(fetchCalls.at(-1).url, '/.netlify/functions/process-notification-queue', 'processNotificationQueue calls the Netlify queue processor');
+assert.deepEqual(
+  JSON.parse(fetchCalls.at(-1).options.body),
+  { limit: 100 },
+  'processNotificationQueue clamps large limits before dispatch'
+);
+
 console.log('PASS - notification subscription service tests');
 
 function createSupabaseClient(operationLog) {
-  const row = {
+  const subscriptionRow = {
     id: 'sub-1',
     user_id: 'user-1',
     endpoint: 'https://push.example/subscription-1',
@@ -120,6 +194,16 @@ function createSupabaseClient(operationLog) {
           },
           error: null
         };
+      },
+      async getSession() {
+        return {
+          data: {
+            session: {
+              access_token: 'session-token'
+            }
+          },
+          error: null
+        };
       }
     },
     from(table) {
@@ -129,17 +213,69 @@ function createSupabaseClient(operationLog) {
       };
       operationLog.push(operation);
 
-      return createQueryBuilder(operation, row);
+      return createQueryBuilder(operation, getRowsForTable(table, subscriptionRow));
     }
   };
 }
 
-function createQueryBuilder(operation, row) {
+function getRowsForTable(table, subscriptionRow) {
+  if (table === 'users') {
+    return [
+      {
+        id: 'user-1',
+        role: 'member',
+        account_status: 'active'
+      },
+      {
+        id: 'user-2',
+        role: 'member',
+        account_status: 'active'
+      }
+    ];
+  }
+
+  if (table === 'notification_queue') {
+    return [{
+      id: 'notification-1',
+      type: 'membership_expiring',
+      recipient_user_id: 'user-2',
+      payload: {
+        title: 'Membership expiring'
+      },
+      status: 'pending',
+      attempt_count: 0,
+      created_at: '2026-06-03T00:00:00Z',
+      processed_at: null
+    }];
+  }
+
+  return [subscriptionRow];
+}
+
+function createQueryBuilder(operation, rows) {
   const builder = {
-    data: [row],
+    data: rows,
     error: null,
     select(columns) {
       operation.select = columns;
+      return this;
+    },
+    insert(values) {
+      operation.type = 'insert';
+      operation.values = values;
+      this.data = Array.isArray(values)
+        ? values.map((value, index) => ({
+          id: `notification-${index + 1}`,
+          created_at: '2026-06-03T00:00:00Z',
+          processed_at: null,
+          ...value
+        }))
+        : {
+          id: 'notification-1',
+          created_at: '2026-06-03T00:00:00Z',
+          processed_at: null,
+          ...values
+        };
       return this;
     },
     upsert(values, options) {
@@ -157,12 +293,16 @@ function createQueryBuilder(operation, row) {
       operation.type = 'update';
       operation.values = values;
       this.data = {
-        ...row,
+        ...rows[0],
         ...values
       };
       return this;
     },
     eq(column, value) {
+      operation.filters.push([column, value]);
+      return this;
+    },
+    in(column, value) {
       operation.filters.push([column, value]);
       return this;
     },
