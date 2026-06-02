@@ -2,7 +2,10 @@ import { loadDashboardBootstrap } from '../../scripts/dashboard-bootstrap.js';
 import {
   getActiveMembersMetric,
   getAttendanceSnapshot,
+  getInactiveMembers,
   getInactiveMembersMetric,
+  getMemberAttendanceFrequency,
+  getPeakAttendanceHours,
   getRevenueSnapshot
 } from '../../services/analytics.js';
 import {
@@ -16,6 +19,8 @@ import {
   formatDate
 } from '../../scripts/dashboard-layout.js';
 
+const INACTIVE_MEMBER_DAYS_THRESHOLD = 30;
+
 export function createAdminDashboardView({ supabaseReady }) {
   return createDashboardShell({
     eyebrow: supabaseReady ? 'Supabase live' : 'Supabase unavailable',
@@ -25,6 +30,7 @@ export function createAdminDashboardView({ supabaseReady }) {
     body: `
       <div data-dashboard-root="admin" aria-busy="true">
         ${createAdminAnalyticsWidgets('loading')}
+        ${createAdminAttendanceIntelligenceSections('loading')}
         ${createMetricGrid(getLoadingMetrics(), { label: 'Admin dashboard metrics' })}
         <div class="dashboard-grid dashboard-grid-wide">
           ${createDashboardSection({
@@ -61,16 +67,33 @@ export async function initAdminDashboardPage({ target, appContext }) {
   if (error || !data) {
     const analyticsResult = await analyticsPromise;
 
-    root.innerHTML = createAdminAnalyticsWidgets(analyticsResult);
+    root.innerHTML = `
+      ${createAdminAnalyticsWidgets(analyticsResult)}
+      ${createAdminAttendanceIntelligenceSections({
+        peakAttendance: { error },
+        mostActiveMembers: { error },
+        inactiveMembers: { error },
+        hasError: true
+      })}
+    `;
     setStatus(status, error?.message || 'Unable to load the admin dashboard.', 'error');
     root.setAttribute('aria-busy', 'false');
     return;
   }
 
+  const attendanceIntelligencePromise = loadAdminAttendanceIntelligence({ appContext, users: data.users || [] });
+
   root.innerHTML = renderAdminDashboard(data);
   root.setAttribute('aria-busy', 'false');
   setStatus(status, 'Dashboard overview is current.', 'success');
   renderAdminAnalyticsWidgets(root, await analyticsPromise);
+
+  const attendanceIntelligence = await attendanceIntelligencePromise;
+  renderAdminAttendanceIntelligenceSections(root, attendanceIntelligence);
+
+  if (attendanceIntelligence.hasError) {
+    setStatus(status, 'Dashboard overview is current. Some attendance intelligence could not be loaded.', 'warning');
+  }
 }
 
 function renderAdminDashboard(data) {
@@ -84,6 +107,7 @@ function renderAdminDashboard(data) {
 
   return `
     ${createAdminAnalyticsWidgets('loading')}
+    ${createAdminAttendanceIntelligenceSections('loading')}
 
     ${createMetricGrid([
       { label: 'Total users', value: data.totals.totalUsers, detail: 'Profiles in this gym' },
@@ -226,6 +250,219 @@ async function loadAdminAnalyticsMetrics({ appContext } = {}) {
   };
 }
 
+async function loadAdminAttendanceIntelligence({ appContext, users = [] } = {}) {
+  const memberUsers = users.filter((user) => user.role === 'member');
+  const [peakAttendance, inactiveMembers, mostActiveMembers] = await Promise.all([
+    resolveIntelligenceResult(() => getPeakAttendanceHours({ appContext })),
+    resolveIntelligenceResult(() => getInactiveMembers(INACTIVE_MEMBER_DAYS_THRESHOLD, { appContext })),
+    resolveIntelligenceResult(() => loadMostActiveMembers(memberUsers, { appContext }))
+  ]);
+
+  return {
+    peakAttendance,
+    inactiveMembers,
+    mostActiveMembers,
+    hasError: Boolean(peakAttendance.error || inactiveMembers.error || mostActiveMembers.error)
+  };
+}
+
+async function loadMostActiveMembers(memberUsers, { appContext } = {}) {
+  if (!memberUsers.length) {
+    return [];
+  }
+
+  const results = await Promise.allSettled(memberUsers.map(async (member) => {
+    const frequency = await getMemberAttendanceFrequency(member.id, { appContext });
+
+    return {
+      memberId: member.id,
+      fullname: member.fullname || null,
+      email: member.email || null,
+      totalVisits: frequency.totalVisits,
+      visitsPerWeek: frequency.visitsPerWeek,
+      weekCount: frequency.weekCount
+    };
+  }));
+  const errors = results.filter((result) => result.status === 'rejected');
+
+  if (errors.length === results.length) {
+    throw errors[0].reason;
+  }
+
+  return results
+    .filter((result) => result.status === 'fulfilled')
+    .map((result) => result.value)
+    .filter((member) => member.totalVisits > 0)
+    .sort((left, right) => {
+      if (right.totalVisits !== left.totalVisits) {
+        return right.totalVisits - left.totalVisits;
+      }
+
+      return right.visitsPerWeek - left.visitsPerWeek;
+    })
+    .slice(0, 5);
+}
+
+async function resolveIntelligenceResult(loader) {
+  try {
+    return {
+      data: await loader(),
+      error: null
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error
+    };
+  }
+}
+
+function renderAdminAttendanceIntelligenceSections(root, result) {
+  const target = root?.querySelector('[data-admin-attendance-intelligence]');
+
+  if (!target) {
+    return;
+  }
+
+  target.outerHTML = createAdminAttendanceIntelligenceSections(result);
+}
+
+function createAdminAttendanceIntelligenceSections(result = 'loading') {
+  if (result === 'loading') {
+    return `
+      <div data-admin-attendance-intelligence aria-busy="true">
+        <div class="dashboard-grid dashboard-grid-wide">
+          ${createDashboardSection({
+            title: 'Peak Attendance Times',
+            description: 'Hourly attendance concentration.',
+            body: createCompactList(createLoadingListItems(3), {
+              emptyTitle: 'Loading peak times',
+              emptyDescription: 'Attendance hour calculations are loading.'
+            })
+          })}
+          ${createDashboardSection({
+            title: 'Most Active Members',
+            description: 'Members with the strongest weekly attendance frequency.',
+            body: createCompactList(createLoadingListItems(3), {
+              emptyTitle: 'Loading active members',
+              emptyDescription: 'Member attendance frequency is loading.'
+            })
+          })}
+        </div>
+        ${createDashboardSection({
+          title: 'Inactive Members List',
+          description: `Members not seen in more than ${INACTIVE_MEMBER_DAYS_THRESHOLD} days.`,
+          body: createCompactList(createLoadingListItems(3), {
+            emptyTitle: 'Loading inactive members',
+            emptyDescription: 'Inactive member calculations are loading.'
+          })
+        })}
+      </div>
+    `;
+  }
+
+  return `
+    <div data-admin-attendance-intelligence aria-busy="false">
+      <div class="dashboard-grid dashboard-grid-wide">
+        ${renderPeakAttendanceSection(result?.peakAttendance)}
+        ${renderMostActiveMembersSection(result?.mostActiveMembers)}
+      </div>
+      ${renderInactiveMembersSection(result?.inactiveMembers)}
+    </div>
+  `;
+}
+
+function renderPeakAttendanceSection(result = {}) {
+  if (result.error) {
+    return createDashboardSection({
+      title: 'Peak Attendance Times',
+      description: 'Hourly attendance concentration.',
+      empty: true,
+      body: createEmptyState('Peak times unavailable', result.error.message || 'Attendance peak calculations could not be loaded.')
+    });
+  }
+
+  const hours = (result.data?.hours || [])
+    .filter((hour) => hour.count > 0)
+    .sort((left, right) => right.count - left.count || left.hour - right.hour)
+    .slice(0, 5)
+    .map((hour) => ({
+      title: formatHourRange(hour.hour),
+      description: `${formatPlainNumber(hour.count)} attendance ${hour.count === 1 ? 'record' : 'records'}`,
+      badge: result.data?.peakHour === hour.hour ? 'Peak' : 'Active',
+      state: result.data?.peakHour === hour.hour ? 'active' : ''
+    }));
+
+  return createDashboardSection({
+    title: 'Peak Attendance Times',
+    description: result.data?.totalVisits ? `${formatPlainNumber(result.data.totalVisits)} attendance records grouped by hour.` : 'Hourly attendance concentration.',
+    body: createCompactList(hours, {
+      emptyTitle: 'No attendance times yet',
+      emptyDescription: 'Peak attendance times will appear after members check in.'
+    })
+  });
+}
+
+function renderMostActiveMembersSection(result = {}) {
+  if (result.error) {
+    return createDashboardSection({
+      title: 'Most Active Members',
+      description: 'Members with the strongest weekly attendance frequency.',
+      empty: true,
+      body: createEmptyState('Most active members unavailable', result.error.message || 'Member attendance frequency could not be loaded.')
+    });
+  }
+
+  return createDashboardSection({
+    title: 'Most Active Members',
+    description: 'Members with the strongest weekly attendance frequency.',
+    body: createCompactList((result.data || []).map((member) => ({
+      title: member.fullname || member.email || 'Member',
+      description: `${formatPlainNumber(member.totalVisits)} total visits - ${formatPlainNumber(member.visitsPerWeek)} visits per week`,
+      badge: `${formatPlainNumber(member.weekCount)} wk`,
+      state: 'active'
+    })), {
+      emptyTitle: 'No active attendance yet',
+      emptyDescription: 'Members will appear here after attendance records are captured.'
+    })
+  });
+}
+
+function renderInactiveMembersSection(result = {}) {
+  if (result.error) {
+    return createDashboardSection({
+      title: 'Inactive Members List',
+      description: `Members not seen in more than ${INACTIVE_MEMBER_DAYS_THRESHOLD} days.`,
+      empty: true,
+      body: createEmptyState('Inactive members unavailable', result.error.message || 'Inactive member calculations could not be loaded.')
+    });
+  }
+
+  return createDashboardSection({
+    title: 'Inactive Members List',
+    description: `Members not seen in more than ${INACTIVE_MEMBER_DAYS_THRESHOLD} days.`,
+    body: createCompactList((result.data || []).slice(0, 8).map((member) => ({
+      title: member.fullname || member.email || 'Member',
+      description: member.lastSeenAt
+        ? `Last seen ${formatDate(member.lastSeenAt)} - ${formatInactiveDays(member.daysInactive)} inactive`
+        : 'No attendance recorded',
+      badge: member.lastSeenAt ? 'Inactive' : 'Never seen',
+      state: 'inactive'
+    })), {
+      emptyTitle: 'No inactive members',
+      emptyDescription: `Every active member has attended within the last ${INACTIVE_MEMBER_DAYS_THRESHOLD} days.`
+    })
+  });
+}
+
+function createLoadingListItems(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    title: 'Loading...',
+    description: 'Calculating attendance intelligence.',
+    badge: index === 0 ? 'Live' : ''
+  }));
+}
+
 function renderAdminAnalyticsWidgets(root, analyticsResult) {
   const target = root?.querySelector('[data-admin-analytics-widgets]');
 
@@ -306,6 +543,20 @@ function formatTrend(value, formatter = formatPlainNumber) {
   }
 
   return 'No change';
+}
+
+function formatHourRange(hour) {
+  const start = String(hour).padStart(2, '0');
+  const end = String((hour + 1) % 24).padStart(2, '0');
+  return `${start}:00-${end}:00`;
+}
+
+function formatInactiveDays(daysInactive) {
+  if (daysInactive === null || daysInactive === undefined) {
+    return 'unknown days';
+  }
+
+  return `${formatPlainNumber(daysInactive)} ${daysInactive === 1 ? 'day' : 'days'}`;
 }
 
 function getLoadingMetrics() {

@@ -71,12 +71,16 @@ globalThis.__GYM_PWA_ENV__ = {
 
 const rpcCalls = [];
 const storedDailyStats = new Map();
+let attendanceRows = [];
+let userRows = [];
 const tableCalls = [];
 globalThis.supabase = {
   createClient() {
     return {
       from(table) {
         const filters = {};
+        const rangeFilters = [];
+        const orders = [];
         tableCalls.push({ table, filters });
 
         return {
@@ -87,6 +91,22 @@ globalThis.supabase = {
           eq(column, value) {
             filters[column] = value;
             return this;
+          },
+          gte(column, value) {
+            rangeFilters.push({ type: 'gte', column, value });
+            return this;
+          },
+          lte(column, value) {
+            rangeFilters.push({ type: 'lte', column, value });
+            return this;
+          },
+          order(column, options = {}) {
+            orders.push({ column, options });
+            tableCalls[tableCalls.length - 1].orders = [...orders];
+            return Promise.resolve({
+              data: applyTableQuery(table, filters, rangeFilters, orders),
+              error: null
+            });
           },
           maybeSingle() {
             const key = `${filters.gym_id}:${filters.stat_date}`;
@@ -140,7 +160,11 @@ const {
   calculateDailyStats,
   getActiveMembersMetric,
   getAttendanceSnapshot,
+  getInactiveMembers,
   getInactiveMembersMetric,
+  getLastSeenData,
+  getMemberAttendanceFrequency,
+  getPeakAttendanceHours,
   getRevenueSnapshot,
   upsertDailyStats
 } = await import(join(tempDir, 'analytics.js'));
@@ -299,4 +323,175 @@ assert.deepEqual(
   'cache hook receives a stable tenant-scoped metric key'
 );
 
+attendanceRows = [
+  {
+    id: 'log-1',
+    gym_id: 'gym-id',
+    user_id: 'member-1',
+    attendance_date: '2026-06-01',
+    attended_at: '2026-06-01T06:15:00.000Z',
+    source: 'qr_scan'
+  },
+  {
+    id: 'log-2',
+    gym_id: 'gym-id',
+    user_id: 'member-2',
+    attendance_date: '2026-06-01',
+    attended_at: '2026-06-01T06:45:00.000Z',
+    source: 'admin_manual'
+  },
+  {
+    id: 'log-3',
+    gym_id: 'gym-id',
+    user_id: 'member-1',
+    attendance_date: '2026-06-03',
+    attended_at: '2026-06-03T17:05:00.000Z',
+    source: 'qr_scan'
+  },
+  {
+    id: 'log-4',
+    gym_id: 'gym-id',
+    user_id: 'member-1',
+    attendance_date: '2026-06-08',
+    attended_at: '2026-06-08T17:15:00.000Z',
+    source: 'trainer_manual'
+  },
+  {
+    id: 'other-gym-log',
+    gym_id: 'other-gym',
+    user_id: 'member-1',
+    attendance_date: '2026-06-01',
+    attended_at: '2026-06-01T06:00:00.000Z',
+    source: 'qr_scan'
+  }
+];
+userRows = [
+  {
+    id: 'member-1',
+    gym_id: 'gym-id',
+    fullname: 'Active Recent',
+    email: 'recent@example.com',
+    role: 'member',
+    account_status: 'active'
+  },
+  {
+    id: 'member-2',
+    gym_id: 'gym-id',
+    fullname: 'Inactive Old',
+    email: 'old@example.com',
+    role: 'member',
+    account_status: 'active'
+  },
+  {
+    id: 'member-3',
+    gym_id: 'gym-id',
+    fullname: 'Never Seen',
+    email: 'never@example.com',
+    role: 'member',
+    account_status: 'active'
+  },
+  {
+    id: 'trainer-1',
+    gym_id: 'gym-id',
+    fullname: 'Trainer',
+    email: 'trainer@example.com',
+    role: 'trainer',
+    account_status: 'active'
+  }
+];
+tableCalls.length = 0;
+
+assert.deepEqual(
+  await getPeakAttendanceHours({ appContext }),
+  {
+    peakHour: 6,
+    peakHourLabel: '06:00',
+    totalVisits: 4,
+    hours: Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      count: hour === 6 ? 2 : hour === 17 ? 2 : 0
+    }))
+  },
+  'peak attendance groups tenant attendance logs by hour'
+);
+
+assert.deepEqual(
+  await getMemberAttendanceFrequency('member-1', { appContext }),
+  {
+    memberId: 'member-1',
+    totalVisits: 3,
+    weekCount: 2,
+    visitsPerWeek: 1.5,
+    weeks: [
+      { weekStart: '2026-06-01', visits: 2 },
+      { weekStart: '2026-06-08', visits: 1 }
+    ]
+  },
+  'member attendance frequency returns visits per week'
+);
+
+assert.deepEqual(
+  await getLastSeenData('member-1', { appContext }),
+  {
+    memberId: 'member-1',
+    lastSeenAt: '2026-06-08T17:15:00.000Z',
+    lastAttendanceDate: '2026-06-08',
+    source: 'trainer_manual',
+    attendanceLogId: 'log-4'
+  },
+  'last seen data returns the most recent attendance record for a member'
+);
+
+assert.deepEqual(
+  await getInactiveMembers(2, { appContext, referenceDate: '2026-06-10T00:00:00.000Z' }),
+  [
+    {
+      memberId: 'member-3',
+      fullname: 'Never Seen',
+      email: 'never@example.com',
+      lastSeenAt: null,
+      lastAttendanceDate: null,
+      daysInactive: null
+    },
+    {
+      memberId: 'member-2',
+      fullname: 'Inactive Old',
+      email: 'old@example.com',
+      lastSeenAt: '2026-06-01T06:45:00.000Z',
+      lastAttendanceDate: '2026-06-01',
+      daysInactive: 8
+    }
+  ],
+  'inactive members are active members whose last attendance is older than the threshold'
+);
+
 console.log('PASS - analytics date and statistics normalization tests');
+
+function applyTableQuery(table, filters, rangeFilters = [], orders = []) {
+  const source = table === 'attendance_logs' ? attendanceRows : table === 'users' ? userRows : [];
+  let rows = source.filter((row) => Object.entries(filters).every(([column, value]) => row[column] === value));
+
+  rows = rows.filter((row) => rangeFilters.every((filter) => {
+    if (filter.type === 'gte') {
+      return row[filter.column] >= filter.value;
+    }
+
+    if (filter.type === 'lte') {
+      return row[filter.column] <= filter.value;
+    }
+
+    return true;
+  }));
+
+  orders.slice().reverse().forEach(({ column, options }) => {
+    rows = [...rows].sort((left, right) => {
+      const leftValue = left[column] || '';
+      const rightValue = right[column] || '';
+      const direction = options?.ascending === false ? -1 : 1;
+
+      return leftValue.localeCompare(rightValue) * direction;
+    });
+  });
+
+  return rows;
+}
