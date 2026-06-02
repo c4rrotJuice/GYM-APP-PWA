@@ -1,4 +1,7 @@
 export {
+  checkExpiringMemberships,
+  checkInactiveMembers,
+  createAnnouncementNotifications,
   createBroadcast,
   enqueueNotification,
   getActiveSubscriptions,

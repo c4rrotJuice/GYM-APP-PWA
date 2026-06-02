@@ -17,6 +17,9 @@ export async function getSupabaseClientReady() {
 `);
 
 const {
+  checkExpiringMemberships,
+  checkInactiveMembers,
+  createAnnouncementNotifications,
   createBroadcast,
   enqueueNotification,
   getActiveSubscriptions,
@@ -145,7 +148,7 @@ const broadcastResult = await createBroadcast({
 });
 
 assert.equal(broadcastResult.error, null, 'createBroadcast succeeds');
-assert.equal(broadcastResult.count, 2, 'createBroadcast returns the queued row count');
+assert.equal(broadcastResult.count, 3, 'createBroadcast returns the queued row count');
 assert.deepEqual(
   operations.at(-2).filters,
   [
@@ -156,7 +159,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   operations.at(-1).values.map((row) => row.recipient_user_id),
-  ['user-1', 'user-2'],
+  ['user-1', 'user-2', 'user-3'],
   'createBroadcast queues one notification per eligible user'
 );
 
@@ -168,6 +171,68 @@ assert.deepEqual(
   JSON.parse(fetchCalls.at(-1).options.body),
   { limit: 100 },
   'processNotificationQueue clamps large limits before dispatch'
+);
+
+const expiringResult = await checkExpiringMemberships({ asOf: '2026-06-03' });
+
+assert.equal(expiringResult.error, null, 'checkExpiringMemberships succeeds');
+assert.equal(expiringResult.count, 1, 'checkExpiringMemberships queues matching 7-day reminders');
+assert.deepEqual(
+  operations.at(-2).filters,
+  [
+    ['status', 'active'],
+    ['end_date', '2026-06-10']
+  ],
+  'checkExpiringMemberships finds active memberships expiring exactly 7 days out'
+);
+assert.deepEqual(
+  operations.at(-1).values.map((row) => [row.type, row.recipient_user_id, row.payload.daysUntilExpiry]),
+  [['membership_expiry_reminder', 'user-2', 7]],
+  'checkExpiringMemberships inserts expiry reminder queue entries'
+);
+
+const inactiveResult = await checkInactiveMembers({ asOf: '2026-06-03', thresholdDays: 14 });
+
+assert.equal(inactiveResult.error, null, 'checkInactiveMembers succeeds');
+assert.equal(inactiveResult.count, 2, 'checkInactiveMembers queues members over the attendance threshold');
+assert.deepEqual(
+  operations.at(-3).filters,
+  [
+    ['role', 'member'],
+    ['account_status', 'active']
+  ],
+  'checkInactiveMembers loads active member recipients'
+);
+assert.deepEqual(
+  operations.at(-2).filters,
+  [['user_id', ['user-1', 'user-2', 'user-3']]],
+  'checkInactiveMembers loads attendance for active members'
+);
+assert.deepEqual(
+  operations.at(-1).values.map((row) => [row.type, row.recipient_user_id, row.payload.thresholdDays]),
+  [
+    ['inactive_member', 'user-1', 14],
+    ['inactive_member', 'user-3', 14]
+  ],
+  'checkInactiveMembers inserts inactive member queue entries only'
+);
+
+const announcementResult = await createAnnouncementNotifications({
+  title: 'Holiday hours',
+  body: 'The gym closes early today.',
+  roles: ['member']
+});
+
+assert.equal(announcementResult.error, null, 'createAnnouncementNotifications succeeds');
+assert.equal(announcementResult.count, 3, 'createAnnouncementNotifications uses broadcast queueing');
+assert.deepEqual(
+  operations.at(-1).values.map((row) => [row.type, row.payload.title]),
+  [
+    ['announcement', 'Holiday hours'],
+    ['announcement', 'Holiday hours'],
+    ['announcement', 'Holiday hours']
+  ],
+  'createAnnouncementNotifications creates announcement queue entries'
 );
 
 console.log('PASS - notification subscription service tests');
@@ -223,11 +288,19 @@ function getRowsForTable(table, subscriptionRow) {
     return [
       {
         id: 'user-1',
+        fullname: 'Member One',
         role: 'member',
         account_status: 'active'
       },
       {
         id: 'user-2',
+        fullname: 'Member Two',
+        role: 'member',
+        account_status: 'active'
+      },
+      {
+        id: 'user-3',
+        fullname: 'Member Three',
         role: 'member',
         account_status: 'active'
       }
@@ -247,6 +320,36 @@ function getRowsForTable(table, subscriptionRow) {
       created_at: '2026-06-03T00:00:00Z',
       processed_at: null
     }];
+  }
+
+  if (table === 'memberships') {
+    return [
+      {
+        id: 'membership-1',
+        user_id: 'user-2',
+        type: 'monthly',
+        status: 'active',
+        start_date: '2026-05-10',
+        end_date: '2026-06-10'
+      }
+    ];
+  }
+
+  if (table === 'attendance_logs') {
+    return [
+      {
+        id: 'attendance-1',
+        user_id: 'user-1',
+        attendance_date: '2026-05-15',
+        attended_at: '2026-05-15T08:00:00Z'
+      },
+      {
+        id: 'attendance-2',
+        user_id: 'user-2',
+        attendance_date: '2026-05-25',
+        attended_at: '2026-05-25T08:00:00Z'
+      }
+    ];
   }
 
   return [subscriptionRow];

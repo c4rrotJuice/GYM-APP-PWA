@@ -22,7 +22,12 @@ const NOTIFICATION_QUEUE_COLUMNS = [
 ].join(', ');
 
 const BROADCAST_USER_COLUMNS = 'id, role, account_status';
+const EXPIRING_MEMBERSHIP_COLUMNS = 'id, user_id, type, status, start_date, end_date';
+const INACTIVE_MEMBER_COLUMNS = 'id, fullname, email, role, account_status';
+const INACTIVE_ATTENDANCE_COLUMNS = 'id, user_id, attendance_date, attended_at';
 const DEFAULT_QUEUE_STATUS = 'pending';
+const EXPIRY_REMINDER_DAYS = 7;
+const DEFAULT_INACTIVE_THRESHOLD_DAYS = 14;
 
 export async function saveSubscription(subscription, { userId } = {}) {
   try {
@@ -126,6 +131,119 @@ export async function createBroadcast(broadcast = {}) {
   } catch (error) {
     return { notifications: [], count: 0, error };
   }
+}
+
+export async function checkExpiringMemberships({ asOf = new Date() } = {}) {
+  try {
+    const supabase = await getNotificationClient();
+    const reminderDate = addDays(toDateOnly(asOf), EXPIRY_REMINDER_DAYS);
+    const { data: memberships, error: membershipsError } = await supabase
+      .from('memberships')
+      .select(EXPIRING_MEMBERSHIP_COLUMNS)
+      .eq('status', 'active')
+      .eq('end_date', reminderDate);
+
+    if (membershipsError) {
+      throw membershipsError;
+    }
+
+    const rows = (memberships || [])
+      .filter((membership) => membership?.user_id)
+      .map((membership) => normalizeNotificationPayload({
+        type: 'membership_expiry_reminder',
+        recipientUserId: membership.user_id,
+        payload: {
+          title: 'Membership expiring soon',
+          body: 'Your gym membership expires in 7 days.',
+          url: '/app.html#memberships',
+          membershipId: membership.id || null,
+          membershipType: membership.type || null,
+          endDate: membership.end_date,
+          daysUntilExpiry: EXPIRY_REMINDER_DAYS,
+          trigger: 'checkExpiringMemberships'
+        }
+      }));
+
+    return await insertNotificationRows(supabase, rows);
+  } catch (error) {
+    return { notifications: [], count: 0, error };
+  }
+}
+
+export async function checkInactiveMembers({ asOf = new Date(), thresholdDays = DEFAULT_INACTIVE_THRESHOLD_DAYS } = {}) {
+  try {
+    const supabase = await getNotificationClient();
+    const normalizedThreshold = normalizePositiveInteger(thresholdDays, DEFAULT_INACTIVE_THRESHOLD_DAYS);
+    const cutoffDate = addDays(toDateOnly(asOf), -normalizedThreshold);
+
+    const { data: members, error: membersError } = await supabase
+      .from('users')
+      .select(INACTIVE_MEMBER_COLUMNS)
+      .eq('role', 'member')
+      .eq('account_status', 'active');
+
+    if (membersError) {
+      throw membersError;
+    }
+
+    const memberIds = (members || []).map((member) => member?.id).filter(Boolean);
+    if (!memberIds.length) {
+      return { notifications: [], count: 0, error: null };
+    }
+
+    const { data: logs, error: logsError } = await supabase
+      .from('attendance_logs')
+      .select(INACTIVE_ATTENDANCE_COLUMNS)
+      .in('user_id', memberIds)
+      .order('attendance_date', { ascending: false });
+
+    if (logsError) {
+      throw logsError;
+    }
+
+    const lastAttendanceByUser = mapLastAttendanceByUser(logs || []);
+    const rows = (members || [])
+      .filter((member) => {
+        const lastAttendanceDate = lastAttendanceByUser.get(member.id);
+        return !lastAttendanceDate || lastAttendanceDate < cutoffDate;
+      })
+      .map((member) => {
+        const lastAttendanceDate = lastAttendanceByUser.get(member.id) || null;
+        return normalizeNotificationPayload({
+          type: 'inactive_member',
+          recipientUserId: member.id,
+          payload: {
+            title: 'We miss you at the gym',
+            body: `You have not checked in for more than ${normalizedThreshold} days.`,
+            url: '/app.html#attendance-history',
+            thresholdDays: normalizedThreshold,
+            cutoffDate,
+            lastAttendanceDate,
+            daysInactive: lastAttendanceDate ? daysBetween(lastAttendanceDate, toDateOnly(asOf)) : null,
+            trigger: 'checkInactiveMembers'
+          }
+        });
+      });
+
+    return await insertNotificationRows(supabase, rows);
+  } catch (error) {
+    return { notifications: [], count: 0, error };
+  }
+}
+
+export async function createAnnouncementNotifications(announcement = {}) {
+  const normalized = normalizeAnnouncementPayload(announcement);
+  return createBroadcast({
+    type: 'announcement',
+    roles: normalized.roles,
+    payload: {
+      title: normalized.title,
+      body: normalized.body,
+      url: normalized.url,
+      announcementId: normalized.announcementId,
+      trigger: 'createAnnouncementNotifications'
+    }
+  });
 }
 
 export async function processNotificationQueue({ limit = 25 } = {}) {
@@ -336,6 +454,24 @@ function normalizeBroadcastPayload(broadcast = {}) {
   return { type, payload, roles };
 }
 
+function normalizeAnnouncementPayload(announcement = {}) {
+  const title = String(announcement.title || '').trim();
+  const body = String(announcement.body || announcement.message || '').trim();
+  const url = String(announcement.url || '/app.html#dashboard').trim();
+  const roles = normalizeRoleList(announcement.roles || announcement.role);
+  const announcementId = announcement.announcementId || announcement.announcement_id || null;
+
+  if (!title) {
+    throw new Error('Announcement title is required.');
+  }
+
+  if (!body) {
+    throw new Error('Announcement body is required.');
+  }
+
+  return { title, body, url, roles, announcementId };
+}
+
 function normalizeJsonPayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return {};
@@ -361,6 +497,82 @@ function normalizeQueueLimit(value) {
   }
 
   return Math.min(Math.max(limit, 1), 100);
+}
+
+async function insertNotificationRows(supabase, rows) {
+  if (!rows.length) {
+    return { notifications: [], count: 0, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from('notification_queue')
+    .insert(rows)
+    .select(NOTIFICATION_QUEUE_COLUMNS);
+
+  return {
+    notifications: error ? [] : (data || []).map(normalizeQueuedNotification),
+    count: error ? 0 : (data || []).length,
+    error
+  };
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const number = Number.parseInt(value, 10);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function mapLastAttendanceByUser(logs = []) {
+  return logs.reduce((map, log) => {
+    const userId = log?.user_id;
+    const date = normalizeDateOnly(log?.attendance_date || log?.attended_at);
+
+    if (!userId || !date) {
+      return map;
+    }
+
+    const current = map.get(userId);
+    if (!current || date > current) {
+      map.set(userId, date);
+    }
+
+    return map;
+  }, new Map());
+}
+
+function addDays(value, days) {
+  const date = parseDateOnly(value);
+  date.setUTCDate(date.getUTCDate() + days);
+  return toDateOnly(date);
+}
+
+function daysBetween(startDate, endDate) {
+  return Math.floor((parseDateOnly(endDate) - parseDateOnly(startDate)) / 86400000);
+}
+
+function toDateOnly(value) {
+  return parseDateOnly(value).toISOString().slice(0, 10);
+}
+
+function normalizeDateOnly(value) {
+  try {
+    return value ? toDateOnly(value) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function parseDateOnly(value) {
+  if (value instanceof Date) {
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+  }
+
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) {
+    throw new Error('A valid date is required.');
+  }
+
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
 }
 
 function normalizeQueuedNotification(notification) {
